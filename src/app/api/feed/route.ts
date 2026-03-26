@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
-import { routeSessions, routes, users, followers, waypoints, userBadges, badges } from '@/lib/db/remote/schema'
+import { routeSessions, routes, users, followers, waypoints, organizations } from '@/lib/db/remote/schema'
 import { eq, inArray, desc } from 'drizzle-orm'
 
 export async function GET(request: NextRequest) {
@@ -13,22 +13,15 @@ export async function GET(request: NextRequest) {
     const { data } = await adminClient.auth.getUser(token)
     if (!data.user) return NextResponse.json([], { status: 401 })
 
-    // Pega quem o usuário segue
-    const [dbUser] = await db.select().from(users)
-      .where(eq(users.supabaseAuthId, data.user.id)).limit(1)
+    const [dbUser] = await db.select().from(users).where(eq(users.supabaseAuthId, data.user.id)).limit(1)
     if (!dbUser) return NextResponse.json([])
 
-    const followingList = await db.select({ followingId: followers.followingId })
-      .from(followers).where(eq(followers.followerId, dbUser.id))
-
+    const followingList = await db.select({ followingId: followers.followingId }).from(followers).where(eq(followers.followerId, dbUser.id))
     const followingIds = followingList.map(f => f.followingId)
-
-    // Inclui o próprio usuário no feed
     const allIds = [...followingIds, dbUser.id]
 
     if (allIds.length === 0) return NextResponse.json([])
 
-    // Busca sessões completadas
     const sessions = await db.select({
       sessionId: routeSessions.id,
       userId: routeSessions.userId,
@@ -43,39 +36,50 @@ export async function GET(request: NextRequest) {
 
     if (sessions.length === 0) return NextResponse.json([])
 
-    // Busca dados relacionados
     const routeIds = [...new Set(sessions.map(s => s.routeId))]
     const userIds = [...new Set(sessions.map(s => s.userId))]
 
-    const [routeList, userList] = await Promise.all([
-      db.select().from(routes).where(inArray(routes.id, routeIds)),
-      db.select().from(users).where(inArray(users.id, userIds)),
-    ])
+    // Busca as rotas e junta com a organização para o Feed
+    const routeList = await db.select({
+        id: routes.id,
+        name: routes.name,
+        coverImageUrl: routes.coverImageUrl, // <-- Puxa a Capa
+        type: routes.type, // <-- Puxa o Tipo
+        organizationName: organizations.name // <-- Puxa o Nome da Org
+    })
+    .from(routes)
+    .leftJoin(organizations, eq(routes.organizationId, organizations.id))
+    .where(inArray(routes.id, routeIds))
+
+    const userList = await db.select().from(users).where(inArray(users.id, userIds))
 
     const routeMap = Object.fromEntries(routeList.map(r => [r.id, r]))
     const userMap = Object.fromEntries(userList.map(u => [u.id, u]))
 
-    // Conta waypoints por rota
-    const waypointCounts = await db.select({ routeId: waypoints.routeId })
-      .from(waypoints).where(inArray(waypoints.routeId, routeIds))
+    const waypointCounts = await db.select({ routeId: waypoints.routeId }).from(waypoints).where(inArray(waypoints.routeId, routeIds))
     const wpCountMap: Record<string, number> = {}
-    waypointCounts.forEach(w => {
-      wpCountMap[w.routeId] = (wpCountMap[w.routeId] ?? 0) + 1
-    })
+    waypointCounts.forEach(w => { wpCountMap[w.routeId] = (wpCountMap[w.routeId] ?? 0) + 1 })
 
-    const feed = sessions.map(s => ({
-      id: s.sessionId,
-      userId: s.userId,
-      userName: userMap[s.userId]?.displayName ?? 'Usuário',
-      userUsername: userMap[s.userId]?.username ?? '',
-      routeName: routeMap[s.routeId]?.name ?? 'Rota',
-      routeId: s.routeId,
-      completedAt: s.completedAt?.toISOString() ?? new Date().toISOString(),
-      badgeName: null,
-      badgeImageUrl: null,
-      waypointCount: wpCountMap[s.routeId] ?? 0,
-      distanceKm: s.totalDistanceKm,
-    }))
+    const feed = sessions.map(s => {
+      const r = routeMap[s.routeId]
+      return {
+        id: s.sessionId,
+        userId: s.userId,
+        userName: userMap[s.userId]?.displayName ?? 'Usuário',
+        userUsername: userMap[s.userId]?.username ?? '',
+        userAvatarUrl: userMap[s.userId]?.avatarUrl ?? null,
+        routeName: r?.name ?? 'Rota',
+        routeId: s.routeId,
+        coverImageUrl: r?.coverImageUrl ?? null, // <-- Retorna pra tela
+        type: r?.type ?? 'Outros',
+        organizationName: r?.organizationName ?? null,
+        completedAt: s.completedAt?.toISOString() ?? new Date().toISOString(),
+        badgeName: null,
+        badgeImageUrl: null,
+        waypointCount: wpCountMap[s.routeId] ?? 0,
+        distanceKm: s.totalDistanceKm,
+      }
+    })
 
     return NextResponse.json(feed)
   } catch (err: any) {

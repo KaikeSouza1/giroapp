@@ -21,9 +21,11 @@ type RouteDetail = {
   name: string
   description: string | null
   difficulty: string
+  type: string
   distanceKm: string | null
   estimatedMinutes: number | null
   coverImageUrl: string | null
+  organizationName: string | null
   waypoints: Waypoint[]
 }
 
@@ -69,14 +71,12 @@ export default function RouteDetailPage() {
   useEffect(() => {
     if (!route || !mapContainerRef.current || mapRef.current) return
 
-    // Salva a rota em uma constante local para que o TypeScript saiba que ela
-    // definitivamente não é nula dentro da função assíncrona initMap.
     const currentRoute = route
 
     async function initMap() {
       const L = (await import('leaflet')).default
       
-      // @ts-expect-error - O TypeScript não reconhece a tipagem de arquivos CSS
+      // @ts-expect-error
       await import('leaflet/dist/leaflet.css')
 
       delete (L.Icon.Default.prototype as any)._getIconUrl
@@ -97,7 +97,6 @@ export default function RouteDetailPage() {
         attribution: '© OpenStreetMap'
       }).addTo(map)
 
-      // Plota waypoints com linha conectando
       const latlngs: [number, number][] = []
 
       currentRoute.waypoints.forEach((wp, i) => {
@@ -160,7 +159,6 @@ export default function RouteDetailPage() {
   return (
     <div className="min-h-screen bg-white font-[family-name:var(--font-dm)]">
 
-      {/* Mapa no topo */}
       <div className="relative h-64">
         <div ref={mapContainerRef} className="absolute inset-0" />
         {!mapReady && (
@@ -170,7 +168,6 @@ export default function RouteDetailPage() {
           </div>
         )}
 
-        {/* Botão voltar flutuante */}
         <button onClick={() => router.back()}
           className="absolute top-4 left-4 z-[1000] w-9 h-9 rounded-full flex items-center justify-center shadow-lg"
           style={{ background: 'white' }}>
@@ -180,11 +177,9 @@ export default function RouteDetailPage() {
         </button>
       </div>
 
-      {/* Conteúdo */}
       <div className="px-5 pt-5 pb-32">
 
-        {/* Título e badge */}
-        <div className="flex items-start justify-between gap-3 mb-4">
+        <div className="flex items-start justify-between gap-3 mb-2">
           <h1 className="text-xl font-black text-gray-900 leading-tight flex-1">{route.name}</h1>
           <span className="flex-shrink-0 px-3 py-1 rounded-full text-xs font-bold"
             style={{
@@ -195,7 +190,18 @@ export default function RouteDetailPage() {
           </span>
         </div>
 
-        {/* Stats */}
+        {/* Informações da Organização e Tipo - Adicionadas aqui */}
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider bg-gray-100 px-2 py-1 rounded-md">
+            {route.type}
+          </span>
+          {route.organizationName && (
+            <span className="text-[10px] font-bold px-2 py-1 rounded-md bg-orange-50 text-orange-600 uppercase tracking-wider">
+              {route.organizationName}
+            </span>
+          )}
+        </div>
+
         <div className="grid grid-cols-3 gap-3 mb-5">
           {[
             { icon: '📍', label: 'Waypoints', value: `${route.waypoints.length}` },
@@ -215,7 +221,6 @@ export default function RouteDetailPage() {
           ))}
         </div>
 
-        {/* Descrição */}
         {route.description && (
           <div className="mb-5">
             <h2 className="text-sm font-black text-gray-900 mb-2">Sobre a rota</h2>
@@ -223,20 +228,17 @@ export default function RouteDetailPage() {
           </div>
         )}
 
-        {/* Waypoints */}
         {route.waypoints.length > 0 && (
           <div className="mb-6">
             <h2 className="text-sm font-black text-gray-900 mb-3">
               Pontos da trilha ({route.waypoints.length})
             </h2>
             <div className="relative">
-              {/* Linha vertical conectando */}
               <div className="absolute left-4 top-5 bottom-5 w-0.5 bg-gray-100" />
 
               <div className="flex flex-col gap-0">
                 {route.waypoints.map((wp, i) => (
                   <div key={wp.id} className="flex items-start gap-4 py-3 relative">
-                    {/* Número */}
                     <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold text-white z-10"
                       style={{ background: i === 0 ? '#830200' : i === route.waypoints.length - 1 ? '#22c55e' : '#E05300' }}>
                       {i === route.waypoints.length - 1 ? '🏁' : i + 1}
@@ -268,7 +270,6 @@ export default function RouteDetailPage() {
         )}
       </div>
 
-      {/* Botão fixo iniciar */}
       <div className="fixed bottom-0 left-0 right-0 px-5 py-4 bg-white border-t border-gray-100"
         style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
         <Link href={`/routes/${route.id}/checkin`}

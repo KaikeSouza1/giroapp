@@ -8,6 +8,22 @@ export const routeStatusEnum = pgEnum('route_status', ['draft', 'published', 'ar
 export const checkinStatusEnum = pgEnum('checkin_status', ['pending', 'approved', 'rejected'])
 export const difficultyEnum = pgEnum('difficulty', ['easy', 'medium', 'hard', 'extreme'])
 
+// NOVOS ENUMS PARA SAAS:
+export const userRoleEnum = pgEnum('user_role', ['superadmin', 'org_admin', 'user'])
+export const routeTypeEnum = pgEnum('route_type', ['caminhada', 'cicloturismo', '4x4', 'moto', 'outros'])
+
+// ─── ORGANIZAÇÕES (SaaS) ──────────────────────────────────────────────────────
+
+export const organizations = pgTable('organizations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: varchar('name', { length: 150 }).notNull(),
+  slug: varchar('slug', { length: 150 }).notNull().unique(),
+  logoUrl: text('logo_url'),
+  isActive: boolean('is_active').default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
 // ─── USUÁRIOS ─────────────────────────────────────────────────────────────────
 
 export const users = pgTable('users', {
@@ -26,6 +42,10 @@ export const users = pgTable('users', {
   isEmailVerified: boolean('is_email_verified').default(false),
   isActive: boolean('is_active').default(true),
   isAdmin: boolean('is_admin').default(false),
+
+  // NOVOS CAMPOS SAAS:
+  role: userRoleEnum('role').default('user').notNull(),
+  organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'set null' }),
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -58,6 +78,11 @@ export const routes = pgTable('routes', {
   startLongitude: numeric('start_longitude', { precision: 10, scale: 7 }),
 
   createdByAdminId: uuid('created_by_admin_id').references(() => users.id),
+
+  // NOVOS CAMPOS SAAS:
+  organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'cascade' }),
+  type: routeTypeEnum('type').default('caminhada').notNull(),
+
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
@@ -142,7 +167,13 @@ export const userBadges = pgTable('user_badges', {
 
 // ─── RELATIONS ────────────────────────────────────────────────────────────────
 
-export const usersRelations = relations(users, ({ many }) => ({
+export const organizationsRelations = relations(organizations, ({ many }) => ({
+  users: many(users),
+  routes: many(routes),
+}))
+
+export const usersRelations = relations(users, ({ one, many }) => ({
+  organization: one(organizations, { fields: [users.organizationId], references: [organizations.id] }),
   checkins: many(checkins),
   routeSessions: many(routeSessions),
   userBadges: many(userBadges),
@@ -151,6 +182,7 @@ export const usersRelations = relations(users, ({ many }) => ({
 }))
 
 export const routesRelations = relations(routes, ({ many, one }) => ({
+  organization: one(organizations, { fields: [routes.organizationId], references: [organizations.id] }),
   waypoints: many(waypoints),
   sessions: many(routeSessions),
   badge: one(badges, { fields: [routes.id], references: [badges.routeId] }),

@@ -31,18 +31,24 @@ export default function AdminLoginPage() {
       return
     }
 
-    // Verifica se é admin
+    // Busca os dados do usuário no nosso banco para checar a ROLE (SaaS)
     const res = await fetch('/api/users/me')
     const user = await res.json()
 
-    if (!user?.isAdmin) {
+    // Verifica se tem permissão para acessar o painel (Superadmin ou Admin de Organização)
+    if (user?.role !== 'superadmin' && user?.role !== 'org_admin') {
       await supabase.auth.signOut()
       setError('Acesso negado. Esta conta não tem permissão de administrador.')
       setLoading(false)
       return
     }
 
-    router.push('/dashboard/routes')
+    // Redirecionamento inteligente baseado no nível de acesso
+    if (user.role === 'superadmin') {
+      router.push('/dashboard/organizations')
+    } else {
+      router.push('/dashboard/routes')
+    }
   }
 
   const inputStyle = (field: string) => ({
@@ -110,7 +116,7 @@ export default function AdminLoginPage() {
           </div>
 
           <h1 className="text-3xl font-black text-gray-900 mb-1">Bem-vindo</h1>
-          <p className="text-gray-400 text-sm mb-8">Acesso exclusivo para administradores</p>
+          <p className="text-gray-400 text-sm mb-8">Acesso exclusivo para parceiros e administradores</p>
 
           <form onSubmit={handleLogin} className="flex flex-col gap-5">
 

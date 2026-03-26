@@ -19,10 +19,12 @@ type Route = {
   name: string
   description: string | null
   difficulty: string
+  type: string
   distanceKm: string | null
   estimatedMinutes: number | null
   coverImageUrl: string | null
   status: string
+  organizationName: string | null
 }
 
 const difficultyLabel: Record<string, string> = {
@@ -54,26 +56,23 @@ export default function HomePage() {
 
   useEffect(() => {
     async function loadData() {
-      // Verifica sessão
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      // Carrega perfil e rotas em paralelo
       const [profileRes, routesRes] = await Promise.all([
-  fetch('/api/users/me'),
-  fetch('/api/routes'),
-])
+        fetch('/api/users/me'),
+        fetch('/api/routes'),
+      ])
 
-// Verifica se as respostas são válidas antes de parsear
-const profileText = await profileRes.text()
-const routesText = await routesRes.text()
+      const profileText = await profileRes.text()
+      const routesText = await routesRes.text()
 
-const profileData = profileText ? JSON.parse(profileText) : null
-const routesData = routesText ? JSON.parse(routesText) : []
+      const profileData = profileText ? JSON.parse(profileText) : null
+      const routesData = routesText ? JSON.parse(routesText) : []
 
-setUser(profileData)
-setRoutes(Array.isArray(routesData) ? routesData : [])
-setLoading(false)
+      setUser(profileData)
+      setRoutes(Array.isArray(routesData) ? routesData : [])
+      setLoading(false)
     }
 
     loadData()
@@ -105,12 +104,10 @@ setLoading(false)
           <path d="M0,180 Q93,140 187,180 Q280,220 375,180" fill="none" stroke="#fff" strokeWidth="0.7"/>
         </svg>
 
-        {/* Top bar */}
         <div className="relative z-10 flex items-center justify-between mb-8">
           <NextImage src="/logogiroprincipal.png" alt="GIRO" width={90} height={36} priority
             className="drop-shadow-lg" />
           <div className="flex items-center gap-3">
-            {/* Notificações */}
             <button className="w-9 h-9 rounded-full flex items-center justify-center"
               style={{ background: 'rgba(255,255,255,0.2)' }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
@@ -118,7 +115,6 @@ setLoading(false)
                 <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
               </svg>
             </button>
-            {/* Avatar */}
             <Link href="/profile">
               <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shadow-lg"
                 style={{ background: 'rgba(255,255,255,0.25)', color: 'white' }}>
@@ -128,7 +124,6 @@ setLoading(false)
           </div>
         </div>
 
-        {/* Saudação */}
         <div className="relative z-10">
           <p className="text-white/70 text-sm">{greeting},</p>
           <h1 className="text-white font-black text-2xl leading-tight">
@@ -139,7 +134,6 @@ setLoading(false)
           </p>
         </div>
 
-        {/* Stats rápidas */}
         <div className="relative z-10 flex gap-3 mt-6">
           {[
             { label: 'Rotas feitas', value: '0' },
@@ -160,7 +154,6 @@ setLoading(false)
       {/* ── Conteúdo ─────────────────────────────────────── */}
       <div className="px-5 -mt-2">
 
-        {/* Busca */}
         <div className="relative mb-6">
           <svg className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" width="16" height="16"
             viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -174,7 +167,6 @@ setLoading(false)
           />
         </div>
 
-        {/* Filtros por dificuldade */}
         <div className="flex gap-2 mb-6 overflow-x-auto pb-1 scrollbar-hide">
           {['Todas', 'Fácil', 'Médio', 'Difícil', 'Extremo'].map((filter, i) => (
             <button key={filter}
@@ -189,7 +181,6 @@ setLoading(false)
           ))}
         </div>
 
-        {/* Seção de rotas */}
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-black text-gray-900">Rotas disponíveis</h2>
           <Link href="/routes" className="text-xs font-bold" style={{ color: '#E05300' }}>
@@ -213,7 +204,6 @@ setLoading(false)
                 <div className="bg-white rounded-2xl overflow-hidden shadow-sm"
                   style={{ border: '1.5px solid #F5F5F5' }}>
 
-                  {/* Imagem ou placeholder */}
                   <div className="h-36 relative overflow-hidden"
                     style={{ background: 'linear-gradient(135deg, #FFF0EB, #FFE4D6)' }}>
                     {route.coverImageUrl ? (
@@ -229,18 +219,29 @@ setLoading(false)
                       </div>
                     )}
 
-                    {/* Badge de dificuldade */}
                     <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-xs font-bold"
                       style={{
-  background: 'rgba(255,255,255,0.9)',
-  color: difficultyColor[route.difficulty],
-  backdropFilter: 'blur(8px)',
-}}>
+                        background: 'rgba(255,255,255,0.9)',
+                        color: difficultyColor[route.difficulty],
+                        backdropFilter: 'blur(8px)',
+                      }}>
                       {difficultyLabel[route.difficulty] ?? route.difficulty}
                     </div>
                   </div>
 
                   <div className="p-4">
+                    {/* Organização e Tipo Adicionados Aqui */}
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                        {route.type}
+                      </span>
+                      {route.organizationName && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-orange-50 text-orange-600">
+                          {route.organizationName}
+                        </span>
+                      )}
+                    </div>
+
                     <h3 className="font-bold text-gray-900 text-sm mb-1">{route.name}</h3>
                     {route.description && (
                       <p className="text-gray-400 text-xs leading-relaxed mb-3 line-clamp-2">
@@ -248,7 +249,6 @@ setLoading(false)
                       </p>
                     )}
 
-                    {/* Infos */}
                     <div className="flex items-center gap-4">
                       {route.distanceKm && (
                         <div className="flex items-center gap-1.5">

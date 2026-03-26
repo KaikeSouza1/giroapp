@@ -9,8 +9,10 @@ type Route = {
   name: string
   difficulty: string
   status: string
+  type: string
   distanceKm: string | null
   createdAt: string
+  organizationName: string | null
 }
 
 const difficultyLabel: Record<string, string> = {
@@ -34,12 +36,32 @@ const statusColor: Record<string, { bg: string; text: string }> = {
 export default function RoutesPage() {
   const [routes, setRoutes] = useState<Route[]>([])
   const [loading, setLoading] = useState(true)
+  const [userRole, setUserRole] = useState<string>('')
 
   useEffect(() => {
+    // Busca a role do usuário para saber se mostramos a coluna de Organização
+    fetch('/api/users/me').then(r => r.json()).then(data => setUserRole(data?.role || ''))
+
     fetch('/api/admin/routes')
-      .then(r => r.json())
-      .then(data => { setRoutes(data); setLoading(false) })
-      .catch(() => setLoading(false))
+      .then(async (r) => {
+        const data = await r.json()
+        
+        // Se a API não der sucesso ou se a resposta não for um Array (Lista), a gente previne o erro
+        if (!r.ok || !Array.isArray(data)) {
+          console.error("Erro vindo da API de rotas:", data)
+          setRoutes([]) // Garante que a tela não vai quebrar
+          return
+        }
+        
+        setRoutes(data)
+      })
+      .catch((err) => {
+        console.error("Erro na requisição:", err)
+        setRoutes([])
+      })
+      .finally(() => {
+        setLoading(false)
+      })
   }, [])
 
   async function updateStatus(id: string, status: string) {
@@ -56,12 +78,10 @@ export default function RoutesPage() {
       <Sidebar />
 
       <main className="flex-1 p-8">
-
-        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-black text-gray-900">Rotas</h1>
-            <p className="text-gray-400 text-sm mt-0.5">Gerencie todas as trilhas do GIRO</p>
+            <p className="text-gray-400 text-sm mt-0.5">Gerencie as trilhas {userRole === 'superadmin' ? 'de todas as organizações' : 'da sua organização'}</p>
           </div>
           <Link
             href="/dashboard/routes/new"
@@ -75,7 +95,6 @@ export default function RoutesPage() {
           </Link>
         </div>
 
-        {/* Tabela */}
         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
           {loading ? (
             <div className="flex items-center justify-center py-20">
@@ -94,8 +113,9 @@ export default function RoutesPage() {
           ) : (
             <table className="w-full">
               <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="text-left px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Nome</th>
+                <tr className="border-b border-gray-100 bg-gray-50/50">
+                  <th className="text-left px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Nome & Tipo</th>
+                  {userRole === 'superadmin' && <th className="text-left px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Organização</th>}
                   <th className="text-left px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Dificuldade</th>
                   <th className="text-left px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Distância</th>
                   <th className="text-left px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Status</th>
@@ -109,7 +129,13 @@ export default function RoutesPage() {
                     style={{ animationDelay: `${i * 50}ms` }}>
                     <td className="px-6 py-4">
                       <p className="font-semibold text-gray-900 text-sm">{route.name}</p>
+                      <p className="text-xs text-gray-400 mt-0.5 capitalize">{route.type}</p>
                     </td>
+                    {userRole === 'superadmin' && (
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {route.organizationName || '—'}
+                      </td>
+                    )}
                     <td className="px-6 py-4">
                       <span className="text-xs font-bold px-2.5 py-1 rounded-full"
                         style={{
@@ -123,11 +149,14 @@ export default function RoutesPage() {
                       {route.distanceKm ? `${route.distanceKm} km` : '—'}
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-xs font-bold px-2.5 py-1 rounded-full"
-                        style={statusColor[route.status] ?? { bg: '#F3F4F6', text: '#6B7280' }}>
-                        {statusLabel[route.status] ?? route.status}
-                      </span>
-                    </td>
+  <span className="text-xs font-bold px-2.5 py-1 rounded-full"
+    style={{ 
+      backgroundColor: (statusColor[route.status] || { bg: '#F3F4F6' }).bg, 
+      color: (statusColor[route.status] || { text: '#6B7280' }).text 
+    }}>
+    {statusLabel[route.status] ?? route.status}
+  </span>
+</td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-2">
                         {route.status === 'draft' && (
