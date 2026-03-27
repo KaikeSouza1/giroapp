@@ -1,9 +1,11 @@
-// src/app/api/profile/me/route.ts
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
 import { users, followers, routeSessions, routes, userBadges, badges } from '@/lib/db/remote/schema'
 import { eq, and, sql } from 'drizzle-orm'
+
+// 👇 Mágica do Build Estático AQUI TAMBÉM
+export const dynamic = 'force-static'
 
 export async function GET() {
   try {
@@ -14,7 +16,6 @@ export async function GET() {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
-    // 1. Buscar os dados base do utilizador logado
     const [user] = await db
       .select()
       .from(users)
@@ -25,7 +26,6 @@ export async function GET() {
       return NextResponse.json({ error: 'Utilizador não encontrado' }, { status: 404 })
     }
 
-    // 2. Buscar contagens de Seguidores e Seguindo
     const [followersRes] = await db
       .select({ count: sql<number>`count(*)` })
       .from(followers)
@@ -36,7 +36,6 @@ export async function GET() {
       .from(followers)
       .where(eq(followers.followerId, user.id))
 
-    // 3. Buscar histórico de Rotas Concluídas (Sessions com status 'completed')
     const completedRoutesRes = await db
       .select({
         id: routeSessions.id,
@@ -48,7 +47,6 @@ export async function GET() {
       .innerJoin(routes, eq(routeSessions.routeId, routes.id))
       .where(and(eq(routeSessions.userId, user.id), eq(routeSessions.status, 'completed')))
 
-    // 4. Buscar Insígnias ganhas
     const badgesRes = await db
       .select({
         id: badges.id,
@@ -61,7 +59,6 @@ export async function GET() {
       .innerJoin(badges, eq(userBadges.badgeId, badges.id))
       .where(eq(userBadges.userId, user.id))
 
-    // 5. Montar o objeto completo
     const profileData = {
       id: user.id,
       displayName: user.displayName,

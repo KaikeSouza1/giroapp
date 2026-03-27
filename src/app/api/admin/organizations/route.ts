@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
-import { createClient as createAdminClient } from '@supabase/supabase-js' // <-- IMPORTAÇÃO CORRIGIDA AQUI
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { db } from '@/lib/db/remote/client'
 import { organizations, users } from '@/lib/db/remote/schema'
 import { eq } from 'drizzle-orm'
+
+// Necessário para output: export
+export const dynamic = 'force-static'
 
 export async function GET() {
   try {
@@ -55,7 +58,7 @@ export async function POST(req: Request) {
     // 2. Cria o Usuário do cliente no Supabase Auth usando a chave Service Role (Admin)
     const adminSupabase = createAdminClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY! // <-- Usa a chave secreta de admin
+      process.env.SUPABASE_SERVICE_ROLE_KEY! 
     )
     
     const { data: authData, error: createAuthError } = await adminSupabase.auth.admin.createUser({

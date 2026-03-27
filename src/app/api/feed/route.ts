@@ -1,16 +1,18 @@
 // src/app/api/feed/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/client' // <-- MUDOU AQUI
+import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
 import { routeSessions, routes, users, followers, waypoints, organizations } from '@/lib/db/remote/schema'
 import { eq, inArray, desc } from 'drizzle-orm'
+
+// 👇 NECESSÁRIO PARA O BUILD ESTÁTICO (CAPACITOR)
+export const dynamic = 'force-static'
 
 export async function GET(request: NextRequest) {
   try {
     const token = request.headers.get('Authorization')?.replace('Bearer ', '')
     if (!token) return NextResponse.json([], { status: 401 })
 
-    // MUDOU AQUI: Usando o cliente normal com await
     const supabase = await createClient()
     const { data } = await supabase.auth.getUser(token)
     
@@ -42,7 +44,6 @@ export async function GET(request: NextRequest) {
     const routeIds = [...new Set(sessions.map(s => s.routeId))]
     const userIds = [...new Set(sessions.map(s => s.userId))]
 
-    // Busca as rotas e junta com a organização para o Feed
     const routeList = await db.select({
         id: routes.id,
         name: routes.name,

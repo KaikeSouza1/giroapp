@@ -4,11 +4,19 @@ import { db } from '@/lib/db/remote/client'
 import { routes, waypoints, organizations } from '@/lib/db/remote/schema'
 import { eq, asc } from 'drizzle-orm'
 
+// 👇 ADICIONE ESTAS DUAS LINHAS PARA CORRIGIR O ERRO DE BUILD 👇
+export const dynamic = 'force-static'
+export function generateStaticParams() {
+  return [] 
+}
+// 👆 -------------------------------------------------------- 👆
+
 export async function GET(
   _request: NextRequest,
-  context: { params: Promise<{ id: string }> } // <-- Tipagem estrita corrigida
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    // No Next.js 15, os parâmetros devem ser aguardados (await)
     const resolvedParams = await context.params
     const routeId = resolvedParams.id
 
@@ -17,12 +25,12 @@ export async function GET(
       name: routes.name,
       description: routes.description,
       difficulty: routes.difficulty,
-      type: routes.type, // Pega o tipo de rota
+      type: routes.type,
       distanceKm: routes.distanceKm,
       estimatedMinutes: routes.estimatedMinutes,
       coverImageUrl: routes.coverImageUrl,
       status: routes.status,
-      organizationName: organizations.name, // Junta e pega o nome da organização
+      organizationName: organizations.name,
     })
     .from(routes)
     .leftJoin(organizations, eq(routes.organizationId, organizations.id))
