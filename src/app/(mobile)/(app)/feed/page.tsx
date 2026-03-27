@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import NextImage from 'next/image'
@@ -25,10 +25,24 @@ type FeedItem = {
   distanceKm: string | null
 }
 
+// Tipo para os resultados da pesquisa
+type SearchResult = {
+  id: string
+  displayName: string
+  username: string
+  avatarUrl: string | null
+}
+
 export default function FeedPage() {
   const router = useRouter()
   const [feed, setFeed] = useState<FeedItem[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Estados para a pesquisa
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  const [isSearching, setIsSearching] = useState(false)
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -40,14 +54,53 @@ export default function FeedPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const res = await fetch('/api/feed', { headers: { Authorization: `Bearer ${session.access_token}` } })
-      const text = await res.text()
-      const data = text ? JSON.parse(text) : []
-      setFeed(Array.isArray(data) ? data : [])
-      setLoading(false)
+      try {
+        const res = await fetch('/api/feed', { headers: { Authorization: `Bearer ${session.access_token}` } })
+        const text = await res.text()
+        const data = text ? JSON.parse(text) : []
+        setFeed(Array.isArray(data) ? data : [])
+      } catch (err) {
+        console.error("Erro ao carregar feed", err)
+      } finally {
+        setLoading(false)
+      }
     }
     load()
   }, [])
+
+  // ── Lógica de Busca com Debounce ──────────────────────────────────────────
+  useEffect(() => {
+    if (searchQuery.trim().length < 2) {
+      setSearchResults([])
+      setIsSearching(false)
+      return
+    }
+
+    setIsSearching(true)
+
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
+
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) return
+
+        const res = await fetch(`/api/users/search?q=${encodeURIComponent(searchQuery)}`, {
+          headers: { Authorization: `Bearer ${session.access_token}` }
+        })
+        const data = await res.json()
+        setSearchResults(Array.isArray(data) ? data : [])
+      } catch (error) {
+        console.error("Erro na busca", error)
+      } finally {
+        setIsSearching(false)
+      }
+    }, 500) // Aguarda 500ms depois que o user parar de digitar
+
+    return () => {
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
+    }
+  }, [searchQuery])
 
   function timeAgo(dateStr: string) {
     const diff = Date.now() - new Date(dateStr).getTime()
@@ -59,22 +112,88 @@ export default function FeedPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 font-[family-name:var(--font-dm)] pb-24">
+    <div className="min-h-screen bg-gray-50 font-[family-name:var(--font-dm)] pb-24 relative">
 
       {/* Header Fixo Premium */}
       <div className="relative overflow-hidden px-6 pt-12 pb-6" style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
-        <svg className="absolute inset-0 w-full h-full opacity-[0.1]" viewBox="0 0 375 120" preserveAspectRatio="xMidYMid slice">
-          <path d="M0,60 Q93,20 187,60 Q280,100 375,60" fill="none" stroke="#fff" strokeWidth="1.5"/>
-          <path d="M0,30 Q93,70 187,30 Q280,-10 375,30" fill="none" stroke="#fff" strokeWidth="1"/>
-        </svg>
-        <div className="relative z-10 flex items-center justify-between">
-          <div>
-            <NextImage src="/logogiroprincipal.png" alt="GIRO" width={80} height={32} priority className="drop-shadow-lg" />
-            <p className="text-white/80 text-xs mt-0.5 font-medium tracking-wide">Comunidade</p>
+        {/* Padrão de fundo */}
+        <div className="absolute inset-0 opacity-10">
+           <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                 <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse">
+                    <path d="M 30 0 L 0 0 0 30" fill="none" stroke="white" strokeWidth="1.5" />
+                 </pattern>
+              </defs>
+              <rect width="100%" height="100%" fill="url(#grid)" />
+           </svg>
+        </div>
+
+        <div className="relative z-10 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <NextImage src="/logogiroprincipal.png" alt="GIRO" width={80} height={32} priority className="drop-shadow-lg" />
+              <p className="text-white/80 text-xs mt-0.5 font-medium tracking-wide">Comunidade</p>
+            </div>
+          </div>
+
+          {/* BARRA DE PESQUISA */}
+          <div className="relative w-full">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <svg className="w-4 h-4 text-white/70" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 20">
+                <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="m19 19-4-4m0-7A7 7 0 1 1 1 8a7 7 0 0 1 14 0Z"/>
+              </svg>
+            </div>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-white/10 border border-white/20 rounded-xl text-sm text-white placeholder-white/60 outline-none focus:bg-white/20 focus:border-white/40 transition-all backdrop-blur-md font-medium"
+              placeholder="Encontrar aventureiros..."
+            />
+            {isSearching && (
+               <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+               </div>
+            )}
           </div>
         </div>
       </div>
 
+      {/* RESULTADOS DA PESQUISA FLUTUANTES */}
+      {searchQuery.trim().length >= 2 && (
+        <div className="absolute left-4 right-4 z-50 mt-2 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden max-h-80 overflow-y-auto">
+          {isSearching && searchResults.length === 0 ? (
+             <div className="p-4 text-center text-sm text-gray-500">A procurar...</div>
+          ) : searchResults.length > 0 ? (
+            <div className="flex flex-col">
+              <div className="px-4 py-2 border-b border-gray-50 bg-gray-50/50">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Resultados ({searchResults.length})</span>
+              </div>
+              {searchResults.map(user => (
+                <Link key={user.id} href={`/profile/${user.id}`} onClick={() => setSearchQuery('')}>
+                  <div className="flex items-center gap-3 p-3 hover:bg-orange-50 transition-colors border-b border-gray-50 last:border-0 cursor-pointer">
+                    {user.avatarUrl ? (
+                      <img src={user.avatarUrl} alt={user.displayName} className="w-10 h-10 rounded-full object-cover" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm text-white flex-shrink-0" style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
+                        {user.displayName.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div>
+                      <p className="font-bold text-gray-900 text-sm">{user.displayName}</p>
+                      <p className="text-gray-400 text-xs">@{user.username}</p>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+             <div className="p-4 text-center text-sm text-gray-500">Nenhum utilizador encontrado para "{searchQuery}"</div>
+          )}
+        </div>
+      )}
+
+      {/* FEED DE POSTS (MANTIDO) */}
       <div className="px-4 pt-4">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20"><div className="w-8 h-8 border-3 border-gray-200 border-t-orange-500 rounded-full animate-spin" /></div>
@@ -83,7 +202,7 @@ export default function FeedPage() {
             <div className="w-20 h-20 rounded-3xl flex items-center justify-center text-4xl" style={{ background: '#FFF0EB' }}>🌍</div>
             <div className="text-center">
               <p className="text-gray-700 font-bold text-base">Feed vazio por enquanto</p>
-              <p className="text-gray-400 text-sm mt-1 leading-relaxed">Siga aventureiros para ver as trilhas deles!</p>
+              <p className="text-gray-400 text-sm mt-1 leading-relaxed">Usa a barra de pesquisa para encontrar e seguir aventureiros!</p>
             </div>
           </div>
         ) : (
@@ -92,15 +211,21 @@ export default function FeedPage() {
               <div key={item.id} className="bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-100 pb-2">
 
                 {/* Header do Usuário */}
-                <div className="flex items-center gap-3 px-4 pt-4 pb-3">
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm text-white flex-shrink-0 shadow-inner" style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
-                    {item.userName.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-gray-900 text-sm truncate">{item.userName}</p>
-                    <p className="text-gray-400 text-xs">@{item.userUsername} • {timeAgo(item.completedAt)}</p>
-                  </div>
-                </div>
+                <Link href={`/profile/${item.userId}`}>
+                    <div className="flex items-center gap-3 px-4 pt-4 pb-3 cursor-pointer hover:bg-gray-50 transition-colors">
+                    {item.userAvatarUrl ? (
+                        <img src={item.userAvatarUrl} alt={item.userName} className="w-10 h-10 rounded-full object-cover shadow-sm border border-gray-100" />
+                    ) : (
+                        <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm text-white flex-shrink-0 shadow-inner" style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
+                        {item.userName.charAt(0).toUpperCase()}
+                        </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                        <p className="font-bold text-gray-900 text-sm truncate">{item.userName}</p>
+                        <p className="text-gray-400 text-xs">@{item.userUsername} • {timeAgo(item.completedAt)}</p>
+                    </div>
+                    </div>
+                </Link>
 
                 {/* BANNER DA ROTA */}
                 <Link href={`/routes/${item.routeId}`}>
@@ -108,10 +233,8 @@ export default function FeedPage() {
                     <div className="w-full h-56 relative overflow-hidden bg-gray-100">
                       <img src={item.coverImageUrl} alt={item.routeName} className="w-full h-full object-cover transition-transform duration-500 hover:scale-105" />
                       
-                      {/* Overlay Gradiente Escuro na base da imagem */}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
                       
-                      {/* Badges Flutuantes (Tipo e Organização) no Topo */}
                       <div className="absolute top-3 left-3 flex flex-wrap gap-2">
                         <span className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-white/95 text-gray-800 uppercase tracking-wider shadow-sm">
                             {item.type}
@@ -123,7 +246,6 @@ export default function FeedPage() {
                         )}
                       </div>
 
-                      {/* Nome da Rota sobre a Imagem */}
                       <div className="absolute bottom-4 left-4 right-4">
                          <p className="text-xs font-bold text-orange-400 uppercase tracking-widest mb-1 drop-shadow-md">Concluiu a rota</p>
                          <h3 className="font-black text-white text-xl leading-tight drop-shadow-lg">{item.routeName}</h3>

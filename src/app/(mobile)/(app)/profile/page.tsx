@@ -50,13 +50,18 @@ export default function ProfilePage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const res = await fetch('/api/profile/me', {
-        headers: { Authorization: `Bearer ${session.access_token}` }
-      })
-      const text = await res.text()
-      const data = text ? JSON.parse(text) : null
-      setProfile(data)
-      setLoading(false)
+      try {
+        const res = await fetch('/api/profile/me', {
+          headers: { Authorization: `Bearer ${session.access_token}` }
+        })
+        const text = await res.text()
+        const data = text ? JSON.parse(text) : null
+        setProfile(data)
+      } catch (err) {
+        console.error("Erro ao carregar perfil:", err)
+      } finally {
+        setLoading(false)
+      }
     }
     load()
   }, [])
@@ -78,7 +83,7 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-gray-50 font-[family-name:var(--font-dm)] pb-24">
 
-      {/* Header */}
+      {/* Header com Gradiente */}
       <div className="relative overflow-hidden px-6 pt-12 pb-16"
         style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
         <svg className="absolute inset-0 w-full h-full opacity-[0.1]" viewBox="0 0 375 200" preserveAspectRatio="xMidYMid slice">
@@ -91,7 +96,7 @@ export default function ProfilePage() {
         <div className="relative z-10 flex items-center justify-between mb-6">
           <NextImage src="/logogiroprincipal.png" alt="GIRO" width={80} height={32} priority className="drop-shadow-lg" />
           <button onClick={handleLogout}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-transform active:scale-95"
             style={{ background: 'rgba(255,255,255,0.2)', color: 'white' }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -102,44 +107,54 @@ export default function ProfilePage() {
           </button>
         </div>
 
-        {/* Avatar + info */}
+        {/* Avatar + info (AGORA COM FOTOGRAFIA) */}
         <div className="relative z-10 flex items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center font-black text-2xl text-white shadow-lg"
-            style={{ background: 'rgba(255,255,255,0.25)', border: '2px solid rgba(255,255,255,0.4)' }}>
-            {profile?.displayName?.charAt(0).toUpperCase() ?? 'U'}
-          </div>
+          {profile?.avatarUrl ? (
+            <img 
+              src={profile.avatarUrl} 
+              alt={profile.displayName} 
+              className="w-16 h-16 rounded-2xl object-cover shadow-lg"
+              style={{ border: '2px solid rgba(255,255,255,0.4)' }}
+            />
+          ) : (
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center font-black text-2xl text-white shadow-lg"
+              style={{ background: 'rgba(255,255,255,0.25)', border: '2px solid rgba(255,255,255,0.4)' }}>
+              {profile?.displayName?.charAt(0).toUpperCase() ?? 'U'}
+            </div>
+          )}
+          
           <div>
             <h1 className="text-white font-black text-xl leading-tight">
               {profile?.displayName ?? 'Aventureiro'}
             </h1>
-            <p className="text-white/60 text-sm">@{profile?.username ?? ''}</p>
+            <p className="text-white/60 text-sm font-medium mt-0.5">@{profile?.username ?? ''}</p>
             {profile?.bio && (
-              <p className="text-white/70 text-xs mt-1">{profile.bio}</p>
+              <p className="text-white/80 text-xs mt-1.5 line-clamp-2">{profile.bio}</p>
             )}
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="relative z-10 flex gap-3 mt-5">
+        {/* Estatísticas */}
+        <div className="relative z-10 flex gap-3 mt-6">
           {[
             { label: 'Rotas', value: profile?.completedRoutes?.length ?? 0 },
             { label: 'Insígnias', value: profile?.badges?.length ?? 0 },
             { label: 'Seguidores', value: profile?.followersCount ?? 0 },
-            { label: 'Seguindo', value: profile?.followingCount ?? 0 },
+            { label: 'A seguir', value: profile?.followingCount ?? 0 },
           ].map(s => (
-            <div key={s.label} className="flex-1 text-center rounded-2xl py-2"
+            <div key={s.label} className="flex-1 text-center rounded-2xl py-2.5 backdrop-blur-sm"
               style={{ background: 'rgba(255,255,255,0.15)' }}>
-              <p className="text-white font-black text-base leading-none">{s.value}</p>
-              <p className="text-white/50 text-[9px] mt-0.5">{s.label}</p>
+              <p className="text-white font-black text-lg leading-none">{s.value}</p>
+              <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider">{s.label}</p>
             </div>
           ))}
         </div>
 
-        <div className="absolute bottom-0 left-0 right-0 h-8 bg-gray-50 rounded-t-3xl" />
+        <div className="absolute bottom-0 left-0 right-0 h-6 bg-gray-50 rounded-t-3xl" />
       </div>
 
       {/* Tabs */}
-      <div className="flex mx-5 mt-2 rounded-2xl overflow-hidden border border-gray-100 bg-white mb-4">
+      <div className="flex mx-5 mt-2 rounded-2xl overflow-hidden border border-gray-100 bg-white mb-4 shadow-sm">
         {(['badges', 'routes'] as const).map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)}
             className="flex-1 py-3 text-sm font-bold transition-all"
@@ -156,14 +171,16 @@ export default function ProfilePage() {
 
       <div className="px-5">
 
-        {/* Insígnias */}
+        {/* Aba Insígnias */}
         {activeTab === 'badges' && (
           profile?.badges?.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3">
-              <div className="text-5xl">🏆</div>
-              <p className="text-gray-500 font-semibold text-sm">Nenhuma insígnia ainda</p>
-              <p className="text-gray-400 text-xs text-center">
-                Complete rotas para ganhar insígnias!
+            <div className="flex flex-col items-center justify-center py-12 gap-3">
+              <div className="w-16 h-16 rounded-full bg-orange-50 flex items-center justify-center mb-2">
+                <span className="text-3xl">🏆</span>
+              </div>
+              <p className="text-gray-500 font-bold text-sm">Nenhuma insígnia ainda</p>
+              <p className="text-gray-400 text-xs text-center max-w-[200px]">
+                Complete rotas épicas para desbloquear recompensas e insígnias!
               </p>
             </div>
           ) : (
@@ -171,49 +188,44 @@ export default function ProfilePage() {
               {profile?.badges?.map(badge => (
                 <div key={badge.id} className="bg-white rounded-2xl p-3 text-center shadow-sm"
                   style={{ border: '1.5px solid #F5F5F5' }}>
-                  <div className="w-12 h-12 rounded-xl mx-auto mb-2 flex items-center justify-center"
-                    style={{ background: 'linear-gradient(135deg, #FFF0EB, #FFD9C0)' }}>
-                    <span className="text-2xl">🏅</span>
-                  </div>
-                  <p className="text-xs font-bold text-gray-900 leading-tight line-clamp-2">{badge.name}</p>
+                  <img src={badge.imageUrl} alt={badge.name} className="w-12 h-12 rounded-xl mx-auto mb-2 object-cover" />
+                  <p className="text-[11px] font-bold text-gray-900 leading-tight line-clamp-2">{badge.name}</p>
                 </div>
               ))}
             </div>
           )
         )}
 
-        {/* Rotas concluídas */}
+        {/* Aba Rotas concluídas */}
         {activeTab === 'routes' && (
           profile?.completedRoutes?.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3">
-              <div className="text-5xl">🗺️</div>
-              <p className="text-gray-500 font-semibold text-sm">Nenhuma rota concluída</p>
-              <p className="text-gray-400 text-xs text-center">
-                Saia para uma trilha e complete sua primeira rota!
+            <div className="flex flex-col items-center justify-center py-12 gap-3">
+              <div className="w-16 h-16 rounded-full bg-orange-50 flex items-center justify-center mb-2">
+                <span className="text-3xl">🗺️</span>
+              </div>
+              <p className="text-gray-500 font-bold text-sm">Nenhuma rota concluída</p>
+              <p className="text-gray-400 text-xs text-center max-w-[200px]">
+                Prepara a mochila! Saia para uma trilha e guarde a sua primeira aventura.
               </p>
             </div>
           ) : (
             <div className="flex flex-col gap-3">
               {profile?.completedRoutes?.map(route => (
-                <div key={route.id} className="bg-white rounded-2xl p-4 flex items-center gap-3 shadow-sm"
+                <div key={route.id} className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm"
                   style={{ border: '1.5px solid #F5F5F5' }}>
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                  <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
                     style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
                       <polyline points="20 6 9 17 4 12"/>
                     </svg>
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-gray-900 text-sm truncate">{route.routeName}</p>
-                    <p className="text-gray-400 text-xs mt-0.5">
-                      {new Date(route.completedAt).toLocaleDateString('pt-BR')}
-                      {route.distanceKm ? ` · ${route.distanceKm} km` : ''}
+                    <p className="text-gray-400 text-xs mt-1 font-medium">
+                      {new Date(route.completedAt).toLocaleDateString('pt-PT')}
+                      {route.distanceKm ? ` • ${route.distanceKm} km` : ''}
                     </p>
                   </div>
-                  <span className="text-xs font-bold px-2.5 py-1 rounded-full"
-                    style={{ background: '#DCFCE7', color: '#16A34A' }}>
-                    ✓ Concluída
-                  </span>
                 </div>
               ))}
             </div>

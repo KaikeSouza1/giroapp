@@ -12,10 +12,9 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@capacitor-community/sqlite": "^5.6.2",
+    "@capacitor-community/sqlite": "^5.7.4",
     "@capacitor/camera": "^5.0.0",
-    "@capacitor/cli": "^5.0.0",
-    "@capacitor/core": "^5.0.0",
+    "@capacitor/core": "^5.7.8",
     "@capacitor/geolocation": "^5.0.0",
     "@capacitor/network": "^5.0.0",
     "@capacitor/splash-screen": "^5.0.0",
@@ -26,6 +25,7 @@
     "autoprefixer": "^10.4.27",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.42.0",
+    "jeep-sqlite": "^2.8.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.483.0",
     "next": "15.3.1",
@@ -36,6 +36,7 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.3.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
