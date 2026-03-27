@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import NextImage from 'next/image'
 import { createBrowserClient } from '@supabase/ssr'
-import { TabBar } from '../home/page'
+import TabBar from '@/components/mobile/TabBar'
 
 type Badge = {
   id: string

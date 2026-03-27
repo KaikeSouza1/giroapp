@@ -1,3 +1,4 @@
+// src/app/api/routes/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db/remote/client'
 import { routes, waypoints, organizations } from '@/lib/db/remote/schema'
@@ -5,9 +6,12 @@ import { eq, asc } from 'drizzle-orm'
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> } // <-- Tipagem estrita corrigida
 ) {
   try {
+    const resolvedParams = await context.params
+    const routeId = resolvedParams.id
+
     const [route] = await db.select({
       id: routes.id,
       name: routes.name,
@@ -22,13 +26,13 @@ export async function GET(
     })
     .from(routes)
     .leftJoin(organizations, eq(routes.organizationId, organizations.id))
-    .where(eq(routes.id, params.id))
+    .where(eq(routes.id, routeId))
     .limit(1)
 
     if (!route) return NextResponse.json(null, { status: 404 })
 
     const wps = await db.select().from(waypoints)
-      .where(eq(waypoints.routeId, params.id))
+      .where(eq(waypoints.routeId, routeId))
       .orderBy(asc(waypoints.order))
 
     return NextResponse.json({ ...route, waypoints: wps })

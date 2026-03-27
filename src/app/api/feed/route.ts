@@ -1,5 +1,6 @@
+// src/app/api/feed/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/client'
+import { createClient } from '@/lib/supabase/client' // <-- MUDOU AQUI
 import { db } from '@/lib/db/remote/client'
 import { routeSessions, routes, users, followers, waypoints, organizations } from '@/lib/db/remote/schema'
 import { eq, inArray, desc } from 'drizzle-orm'
@@ -9,8 +10,10 @@ export async function GET(request: NextRequest) {
     const token = request.headers.get('Authorization')?.replace('Bearer ', '')
     if (!token) return NextResponse.json([], { status: 401 })
 
-    const adminClient = createAdminClient()
-    const { data } = await adminClient.auth.getUser(token)
+    // MUDOU AQUI: Usando o cliente normal com await
+    const supabase = await createClient()
+    const { data } = await supabase.auth.getUser(token)
+    
     if (!data.user) return NextResponse.json([], { status: 401 })
 
     const [dbUser] = await db.select().from(users).where(eq(users.supabaseAuthId, data.user.id)).limit(1)
@@ -43,9 +46,9 @@ export async function GET(request: NextRequest) {
     const routeList = await db.select({
         id: routes.id,
         name: routes.name,
-        coverImageUrl: routes.coverImageUrl, // <-- Puxa a Capa
-        type: routes.type, // <-- Puxa o Tipo
-        organizationName: organizations.name // <-- Puxa o Nome da Org
+        coverImageUrl: routes.coverImageUrl,
+        type: routes.type,
+        organizationName: organizations.name
     })
     .from(routes)
     .leftJoin(organizations, eq(routes.organizationId, organizations.id))
@@ -70,7 +73,7 @@ export async function GET(request: NextRequest) {
         userAvatarUrl: userMap[s.userId]?.avatarUrl ?? null,
         routeName: r?.name ?? 'Rota',
         routeId: s.routeId,
-        coverImageUrl: r?.coverImageUrl ?? null, // <-- Retorna pra tela
+        coverImageUrl: r?.coverImageUrl ?? null,
         type: r?.type ?? 'Outros',
         organizationName: r?.organizationName ?? null,
         completedAt: s.completedAt?.toISOString() ?? new Date().toISOString(),

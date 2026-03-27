@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import NextImage from 'next/image'
 import { createBrowserClient } from '@supabase/ssr'
-import { TabBar } from '../home/page'
+import TabBar from '@/components/mobile/TabBar'
 
 type FeedItem = {
   id: string

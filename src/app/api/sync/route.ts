@@ -4,7 +4,8 @@ import { db } from '@/lib/db/remote/client'
 import { checkins, routeSessions } from '@/lib/db/remote/schema'
 
 export async function POST(request: NextRequest) {
-  const supabase = createClient()
+  // ADICIONADO O AWAIT AQUI 👇
+  const supabase = await createClient()
   
   // Autentica o usuário pelo header Authorization
   const { data: { user } } = await supabase.auth.getUser()

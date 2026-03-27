@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { createClient, createAdminClient } from '@/lib/supabase/client'
+import { createClient } from '@/lib/supabase/client'
+import { createClient as createAdminClient } from '@supabase/supabase-js' // <-- IMPORTAÇÃO CORRIGIDA AQUI
 import { db } from '@/lib/db/remote/client'
 import { organizations, users } from '@/lib/db/remote/schema'
 import { eq } from 'drizzle-orm'
@@ -51,8 +52,12 @@ export async function POST(req: Request) {
       isActive: true
     }).returning()
 
-    // 2. Cria o Usuário do cliente no Supabase Auth (usando Admin Client para não precisar confirmar email)
-    const adminSupabase = createAdminClient()
+    // 2. Cria o Usuário do cliente no Supabase Auth usando a chave Service Role (Admin)
+    const adminSupabase = createAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY! // <-- Usa a chave secreta de admin
+    )
+    
     const { data: authData, error: createAuthError } = await adminSupabase.auth.admin.createUser({
       email: adminEmail,
       password: adminPassword,
@@ -60,7 +65,6 @@ export async function POST(req: Request) {
     })
 
     if (createAuthError) {
-      // Se der erro no Auth, retorna o erro (em um app real faríamos rollback da org)
       return NextResponse.json({ error: `Erro no Auth: ${createAuthError.message}` }, { status: 400 })
     }
 

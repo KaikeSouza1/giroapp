@@ -6,9 +6,14 @@ import { eq } from 'drizzle-orm'
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  // 1. Atualizamos a tipagem para indicar que params é uma Promise
+  context: { params: Promise<{ id: string }> } 
 ) {
   try {
+    // 2. Aguardamos a resolução dos parâmetros
+    const resolvedParams = await context.params
+    const routeId = resolvedParams.id
+
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -21,7 +26,8 @@ export async function PATCH(
 
     await db.update(routes)
       .set({ status, updatedAt: new Date() })
-      .where(eq(routes.id, params.id))
+      // 3. Usamos a variável resolvida aqui
+      .where(eq(routes.id, routeId)) 
 
     return NextResponse.json({ success: true })
   } catch (err: any) {

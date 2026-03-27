@@ -4,7 +4,7 @@
 import { useEffect, useState, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
-import { TabBar } from '../../home/page'
+import TabBar from '@/components/mobile/TabBar'
 
 type PublicProfileData = {
   id: string
@@ -195,7 +195,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ id: st
         )}
       </div>
 
-      <TabBar active="" />
+      <TabBar active="feed" />
     </div>
   )
 }
