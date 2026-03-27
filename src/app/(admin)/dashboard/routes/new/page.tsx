@@ -1,18 +1,10 @@
 'use client'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// src/app/(admin)/dashboard/routes/new/page.tsx  (versão atualizada)
-//
-// MUDANÇAS EM RELAÇÃO AO ORIGINAL:
-//   • Adicionado campo "URL da foto de capa" na aba Informações
-//   • Preview em tempo real da imagem inserida
-//   • O campo organizationId para Superadmins já estava funcional — mantido
-// ─────────────────────────────────────────────────────────────────────────────
-
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/components/admin/Sidebar'
 import 'leaflet/dist/leaflet.css'
+import { uploadImageToBucket } from '@/lib/supabase/storage' // ← Função de upload importada
 
 type Waypoint = {
   id: string
@@ -41,15 +33,18 @@ export default function NewRoutePage() {
     distanceKm: '',
     estimatedMinutes: '',
     organizationId: '',
-    coverImageUrl: '',        // ← NOVO campo
+    coverImageUrl: '', 
   })
+
+  // ── ESTADOS DA IMAGEM ─────────────────────────────────────────────────────
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
   const [waypoints, setWaypoints] = useState<Waypoint[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [mapReady, setMapReady] = useState(false)
   const [activeTab, setActiveTab] = useState<'info' | 'waypoints'>('info')
-  const [imageError, setImageError] = useState(false)   // ← preview: imagem inválida?
 
   const [userRole, setUserRole] = useState<string>('')
   const [organizations, setOrganizations] = useState<Organization[]>([])
@@ -147,6 +142,20 @@ export default function NewRoutePage() {
     )
   }
 
+  // ── Lógica de Imagem ──────────────────────────────────────────────────────
+  function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) {
+      setImageFile(file)
+      setPreviewUrl(URL.createObjectURL(file))
+    }
+  }
+
+  function removeImage() {
+    setImageFile(null)
+    setPreviewUrl(null)
+  }
+
   // ── Submit ────────────────────────────────────────────────────────────────
   async function handleSave() {
     if (!form.name.trim()) { setError('O nome da rota é obrigatório.'); return }
@@ -159,10 +168,23 @@ export default function NewRoutePage() {
     setSaving(true)
     setError('')
 
+    let finalImageUrl = form.coverImageUrl
+
+    // Se o utilizador selecionou um ficheiro, fazemos o upload primeiro
+    if (imageFile) {
+      try {
+        finalImageUrl = await uploadImageToBucket(imageFile, 'giro-app', 'routes')
+      } catch (err) {
+        setError('Erro ao fazer upload da imagem de capa. Tente novamente.')
+        setSaving(false)
+        return
+      }
+    }
+
     const res = await fetch('/api/admin/routes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, waypoints }),
+      body: JSON.stringify({ ...form, coverImageUrl: finalImageUrl, waypoints }),
     })
 
     if (!res.ok) {
@@ -302,64 +324,58 @@ export default function NewRoutePage() {
                     />
                   </div>
 
-                  {/* ── FOTO DE CAPA ─────────────────────────── */}
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                      Foto de capa (URL)
-                    </label>
-                    <input
-                      type="url"
-                      value={form.coverImageUrl}
-                      onChange={(e) => {
-                        setForm((p) => ({ ...p, coverImageUrl: e.target.value }))
-                        setImageError(false)
-                      }}
-                      placeholder="https://exemplo.com/foto.jpg"
-                      className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 placeholder-gray-400 outline-none"
-                      style={inputStyle}
-                    />
-
-                    {/* Preview da imagem */}
-                    {form.coverImageUrl && !imageError && (
+                  {/* ── FOTO DE CAPA (UPLOAD LOCAL) ──────────── */}
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Imagem de Capa da Rota</label>
+                    
+                    {!previewUrl ? (
+                      <label 
+                        htmlFor="image-upload" 
+                        className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed rounded-xl cursor-pointer bg-orange-50/50 border-[#E05300]/40 hover:bg-orange-50 transition-colors"
+                      >
+                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                          <svg className="w-8 h-8 mb-3 text-[#E05300]" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 16">
+                            <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 13h3a3 3 0 0 0 0-6h-.025A5.56 5.56 0 0 0 16 6.5 5.5 5.5 0 0 0 5.207 5.021C5.137 5.017 5.071 5 5 5a4 4 0 0 0 0 8h2.167M10 15V6m0 0L8 8m2-2 2 2"/>
+                          </svg>
+                          <p className="mb-2 text-sm text-gray-600">
+                            <span className="font-semibold text-[#E05300]">Clique para fazer upload</span> ou arraste
+                          </p>
+                          <p className="text-xs text-gray-500">PNG, JPG ou WEBP (Max. 5MB)</p>
+                        </div>
+                        <input 
+                          id="image-upload" 
+                          type="file" 
+                          accept="image/png, image/jpeg, image/webp" 
+                          className="hidden" 
+                          onChange={handleImageChange}
+                        />
+                      </label>
+                    ) : (
                       <div className="relative w-full rounded-2xl overflow-hidden mt-1"
                         style={{ height: '140px', border: '1.5px solid #F0F0F0' }}>
                         <img
-                          src={form.coverImageUrl}
+                          src={previewUrl}
                           alt="Preview da capa"
                           className="w-full h-full object-cover"
-                          onError={() => setImageError(true)}
                         />
-                        {/* Overlay com label */}
                         <div className="absolute inset-0 flex items-end p-2"
                           style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 60%)' }}>
                           <span className="text-white text-[10px] font-bold uppercase tracking-wider">
-                            Preview da capa
+                            Ficheiro pronto para upload
                           </span>
                         </div>
-                        {/* Botão remover */}
                         <button
-                          onClick={() => { setForm(p => ({ ...p, coverImageUrl: '' })); setImageError(false) }}
-                          className="absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center"
-                          style={{ background: 'rgba(0,0,0,0.5)' }}
+                          onClick={removeImage}
+                          className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center hover:bg-red-500/80 transition-colors"
+                          style={{ background: 'rgba(0,0,0,0.6)' }}
+                          type="button"
                         >
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
                             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
                           </svg>
                         </button>
                       </div>
                     )}
-
-                    {/* Erro de imagem inválida */}
-                    {imageError && (
-                      <p className="text-xs text-red-400 mt-0.5">
-                        ⚠️ URL inválida ou imagem não encontrada
-                      </p>
-                    )}
-
-                    {/* Dica */}
-                    <p className="text-[10px] text-gray-400 leading-relaxed">
-                      Cole a URL pública de uma imagem (JPG, PNG, WebP). Recomendado: 1200×630px.
-                    </p>
                   </div>
 
                   {/* Tipo + Dificuldade */}
