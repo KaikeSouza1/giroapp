@@ -4,10 +4,6 @@ import { db } from '@/lib/db/remote/client'
 import { routes, waypoints, organizations } from '@/lib/db/remote/schema'
 import { eq, asc } from 'drizzle-orm'
 
-export const dynamic = 'force-static'        // ← adicionar
-export function generateStaticParams() { return [] }  // ← adicionar
-
-
 export async function GET(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> }

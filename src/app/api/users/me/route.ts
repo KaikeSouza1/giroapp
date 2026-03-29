@@ -4,9 +4,6 @@ import { db } from '@/lib/db/remote/client'
 import { users } from '@/lib/db/remote/schema'
 import { eq } from 'drizzle-orm'
 
-// 👇 NECESSÁRIO PARA O BUILD ESTÁTICO
-export const dynamic = 'force-static'
-
 export async function GET() {
   try {
     const supabase = await createClient()

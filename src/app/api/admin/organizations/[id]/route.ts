@@ -5,11 +5,6 @@ import { db } from '@/lib/db/remote/client'
 import { organizations, users } from '@/lib/db/remote/schema'
 import { eq } from 'drizzle-orm'
 
-// 👇 CONFIGURAÇÃO OBRIGATÓRIA PARA O BUILD ESTÁTICO (CAPACITOR)
-export const dynamic = 'force-static'        // ← adicionar
-export function generateStaticParams() { return [] }  // ← adicionar
-
-
 // Função auxiliar para verificar se é superadmin
 async function checkSuperAdmin() {
   const supabase = await createClient()

@@ -4,8 +4,6 @@ import { db } from '@/lib/db/remote/client'
 import { routes, users, waypoints, organizations } from '@/lib/db/remote/schema'
 import { eq, desc } from 'drizzle-orm'
 
-export const dynamic = 'force-static'
-
 // GET — lista todas as rotas (para o painel admin)
 export async function GET() {
   try {

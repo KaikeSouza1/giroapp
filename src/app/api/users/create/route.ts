@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db/remote/client'
 import { users } from '@/lib/db/remote/schema'
 
-export const dynamic = 'force-static' // ← ADICIONAR
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()

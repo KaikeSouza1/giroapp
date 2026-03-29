@@ -5,9 +5,6 @@ import { db } from '@/lib/db/remote/client'
 import { routeSessions, routes, users, followers, waypoints, organizations } from '@/lib/db/remote/schema'
 import { eq, inArray, desc } from 'drizzle-orm'
 
-// 👇 NECESSÁRIO PARA O BUILD ESTÁTICO (CAPACITOR)
-export const dynamic = 'force-static'
-
 export async function GET(request: NextRequest) {
   try {
     const token = request.headers.get('Authorization')?.replace('Bearer ', '')

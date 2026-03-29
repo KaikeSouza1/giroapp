@@ -4,9 +4,6 @@ import { db } from '@/lib/db/remote/client'
 import { users, followers } from '@/lib/db/remote/schema'
 import { eq, and } from 'drizzle-orm'
 
-export const dynamic = 'force-static'
-export function generateStaticParams() { return [] }
-
 export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> }

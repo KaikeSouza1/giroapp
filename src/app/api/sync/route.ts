@@ -3,8 +3,6 @@ import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
 import { checkins } from '@/lib/db/remote/schema'
 
-export const dynamic = 'force-static' // ← ADICIONAR
-
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()

@@ -5,8 +5,6 @@ import { users, followers, routeSessions, routes, userBadges, badges } from '@/l
 import { eq, and, sql } from 'drizzle-orm'
 
 // 👇 Mágica do Build Estático AQUI TAMBÉM
-export const dynamic = 'force-static'
-
 export async function GET() {
   try {
     const supabase = await createClient()

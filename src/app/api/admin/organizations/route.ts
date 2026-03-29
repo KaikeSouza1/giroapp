@@ -5,9 +5,6 @@ import { db } from '@/lib/db/remote/client'
 import { organizations, users } from '@/lib/db/remote/schema'
 import { eq } from 'drizzle-orm'
 
-// Necessário para output: export
-export const dynamic = 'force-static'
-
 export async function GET() {
   try {
     const supabase = await createClient()
