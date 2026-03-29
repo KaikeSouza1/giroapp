@@ -5,12 +5,9 @@ import { db } from '@/lib/db/remote/client'
 import { routes, users } from '@/lib/db/remote/schema'
 import { eq } from 'drizzle-orm'
 
-// 👇 CONFIGURAÇÃO OBRIGATÓRIA PARA BUILD ESTÁTICO (CAPACITOR)
-export const dynamic = 'force-static'
+export const dynamic = 'force-static'        // ← adicionar
+export function generateStaticParams() { return [] }  // ← adicionar
 
-export function generateStaticParams() {
-  return [] // Retorna vazio para o build não tentar pré-gerar IDs
-}
 
 export async function PATCH(
   request: NextRequest,

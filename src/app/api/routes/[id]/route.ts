@@ -4,12 +4,9 @@ import { db } from '@/lib/db/remote/client'
 import { routes, waypoints, organizations } from '@/lib/db/remote/schema'
 import { eq, asc } from 'drizzle-orm'
 
-// 👇 ADICIONE ESTAS DUAS LINHAS PARA CORRIGIR O ERRO DE BUILD 👇
-export const dynamic = 'force-static'
-export function generateStaticParams() {
-  return [] 
-}
-// 👆 -------------------------------------------------------- 👆
+export const dynamic = 'force-static'        // ← adicionar
+export function generateStaticParams() { return [] }  // ← adicionar
+
 
 export async function GET(
   _request: NextRequest,

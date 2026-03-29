@@ -6,10 +6,9 @@ import { organizations, users } from '@/lib/db/remote/schema'
 import { eq } from 'drizzle-orm'
 
 // 👇 CONFIGURAÇÃO OBRIGATÓRIA PARA O BUILD ESTÁTICO (CAPACITOR)
-export const dynamic = 'force-static'
-export function generateStaticParams() {
-  return [] // Retorna vazio para o build ignorar a pré-geração de IDs
-}
+export const dynamic = 'force-static'        // ← adicionar
+export function generateStaticParams() { return [] }  // ← adicionar
+
 
 // Função auxiliar para verificar se é superadmin
 async function checkSuperAdmin() {

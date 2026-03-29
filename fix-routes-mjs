@@ -1,0 +1,33 @@
+// fix-routes.mjs
+import { readFileSync, writeFileSync } from 'fs'
+
+const files = [
+  'src/app/api/admin/organizations/[id]/route.ts',
+  'src/app/api/admin/routes/[id]/status/route.ts',
+  'src/app/api/profile/[id]/route.ts',
+  'src/app/api/profile/[id]/follow/route.ts',
+  'src/app/api/routes/[id]/route.ts',
+]
+
+const injection = `export const dynamic = 'force-static'\nexport function generateStaticParams() { return [] }\n\n`
+
+for (const file of files) {
+  try {
+    let content = readFileSync(file, 'utf8')
+    
+    if (content.includes('generateStaticParams')) {
+      console.log(`✓ já tem: ${file}`)
+      continue
+    }
+
+    // Insere depois dos imports
+    const importEnd = content.lastIndexOf("import ")
+    const insertAt = content.indexOf('\n', importEnd) + 1
+    
+    content = content.slice(0, insertAt) + '\n' + injection + content.slice(insertAt)
+    writeFileSync(file, content, 'utf8')
+    console.log(`✅ corrigido: ${file}`)
+  } catch (e) {
+    console.log(`❌ erro em ${file}: ${e.message}`)
+  }
+}

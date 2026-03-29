@@ -1,19 +1,15 @@
-// src/app/api/profile/[id]/follow/route.ts
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
 import { users, followers } from '@/lib/db/remote/schema'
 import { eq, and } from 'drizzle-orm'
 
-// 👇 NECESSÁRIO PARA O BUILD ESTÁTICO (CAPACITOR)
 export const dynamic = 'force-static'
-export function generateStaticParams() {
-  return []
-}
+export function generateStaticParams() { return [] }
 
 export async function POST(
-  request: Request, 
-  context: { params: Promise<{ id: string }> } // Tipagem Next 15
+  request: Request,
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const resolvedParams = await context.params
@@ -34,14 +30,10 @@ export async function POST(
       await db.delete(followers).where(eq(followers.id, existingFollow.id))
       return NextResponse.json({ isFollowing: false })
     } else {
-      await db.insert(followers).values({
-        followerId: me.id,
-        followingId: targetUserId
-      })
+      await db.insert(followers).values({ followerId: me.id, followingId: targetUserId })
       return NextResponse.json({ isFollowing: true })
     }
   } catch (err: any) {
-    console.error("[API /follow] Erro:", err)
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
   }
 }

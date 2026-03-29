@@ -5,11 +5,10 @@ import { db } from '@/lib/db/remote/client'
 import { users, followers, routeSessions, routes, userBadges, badges } from '@/lib/db/remote/schema'
 import { eq, and, sql } from 'drizzle-orm'
 
-// 👇 ADICIONE ESTAS LINHAS PARA O BUILD ESTÁTICO (CAPACITOR)
-export const dynamic = 'force-static'
-export function generateStaticParams() {
-  return []
-}
+export const dynamic = 'force-static'        // ← adicionar
+export function generateStaticParams() { return [] }  // ← adicionar
+
+
 
 export async function GET(
   request: Request, 
