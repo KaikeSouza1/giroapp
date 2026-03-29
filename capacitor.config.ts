@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 // Troque pela URL do seu deploy no Vercel depois de publicar
-const PRODUCTION_URL = 'https://SEU-PROJETO.vercel.app';
+const PRODUCTION_URL = 'https://giroapp.vercel.app/';
 
 // Para testes locais: coloque o IP da sua máquina na rede local
 // Descubra com: ipconfig (Windows) | ip addr (Linux)
