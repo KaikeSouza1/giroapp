@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import NextImage from 'next/image'
 import { createBrowserClient } from '@supabase/ssr'
 import TabBar from '@/components/mobile/TabBar'
-// Importação do plugin nativo da Câmera
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 
 type Badge = {
@@ -40,8 +39,11 @@ export default function ProfilePage() {
   const router = useRouter()
   const [profile, setProfile] = useState<ProfileData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [isUpdatingAvatar, setIsUpdatingAvatar] = useState(false) // Estado de carregamento da foto
+  const [isUpdatingAvatar, setIsUpdatingAvatar] = useState(false)
   const [activeTab, setActiveTab] = useState<'badges' | 'routes'>('badges')
+  
+  // Controle do nosso novo Menu Bonitão de Foto
+  const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false)
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -74,15 +76,18 @@ export default function ProfilePage() {
     router.push('/login')
   }
 
-  // 📸 FUNÇÃO PARA TROCAR A FOTO DE PERFIL
-  async function handleChangeAvatar() {
+  // 📸 FUNÇÃO PRINCIPAL: Recebe direto a Câmera ou a Galeria escolhida no nosso menu
+  async function takeProfilePicture(source: CameraSource) {
+    setIsAvatarModalOpen(false) // Fecha o menu bonitão
+    
     try {
-      // 1. Abre o menu nativo perguntando: "Câmera ou Galeria?"
       const image = await Camera.getPhoto({
-        quality: 80,
-        allowEditing: true, // Permite cortar a foto em formato quadrado
+        quality: 85,
+        allowEditing: true, // Abre o recortador nativo do Android/iOS
+        width: 800,         // Força um quadrado
+        height: 800,        // Força um quadrado
         resultType: CameraResultType.DataUrl,
-        source: CameraSource.Prompt // Deixa o usuário escolher de onde quer a foto
+        source: source      // Vai direto pra câmera ou galeria, sem popup feio!
       })
 
       if (!image.dataUrl || !profile) return
@@ -91,26 +96,22 @@ export default function ProfilePage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error("Não autenticado")
 
-      // 2. Converte a foto para enviar
       const resBlob = await fetch(image.dataUrl)
       const blob = await resBlob.blob()
       
-      // Um nome de arquivo único para não ficar no cache do navegador
       const filePath = `avatars/${session.user.id}/profile-${Date.now()}.jpg`
 
-      // 3. Faz o upload para o Supabase Storage
+      // Upload para o bucket "giro-media"
       const { error: uploadError } = await supabase.storage
-        .from('giro-media')
+        .from('giro-app')
         .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true })
 
-      if (uploadError) throw new Error('Erro ao enviar a imagem para a nuvem.')
+      if (uploadError) throw new Error('Erro ao enviar a imagem para o Supabase.')
 
-      // 4. Pega a URL pública gerada
       const { data: { publicUrl } } = supabase.storage
         .from('giro-media')
         .getPublicUrl(filePath)
 
-      // 5. Salva a nova URL no banco de dados (na API que acabamos de criar)
       const dbRes = await fetch('/api/profile/update-avatar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -122,7 +123,6 @@ export default function ProfilePage() {
 
       if (!dbRes.ok) throw new Error("Erro ao salvar no banco de dados.")
 
-      // 6. Atualiza a foto na tela instantaneamente!
       setProfile(prev => prev ? { ...prev, avatarUrl: publicUrl } : null)
 
     } catch (err: any) {
@@ -144,7 +144,46 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 font-[family-name:var(--font-dm)] pb-24">
+    <div className="min-h-screen bg-gray-50 font-[family-name:var(--font-dm)] pb-24 relative">
+
+      {/* 🚀 NOSSO MODAL MENU BONITÃO PARA FOTO DE PERFIL */}
+      {isAvatarModalOpen && (
+        <div 
+          className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60 backdrop-blur-sm transition-opacity" 
+          onClick={() => setIsAvatarModalOpen(false)}
+        >
+          <div 
+            className="bg-white rounded-t-3xl p-6 pb-12 flex flex-col gap-3 shadow-2xl transform transition-transform" 
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-4" />
+            <h3 className="text-lg font-black text-gray-900 mb-2">Trocar foto de perfil</h3>
+            
+            <button 
+              onClick={() => takeProfilePicture(CameraSource.Camera)} 
+              className="w-full py-4 rounded-2xl text-white font-black text-base shadow-lg flex items-center justify-center gap-2" 
+              style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}
+            >
+              📷 Tirar Foto Agora
+            </button>
+            
+            <button 
+              onClick={() => takeProfilePicture(CameraSource.Photos)} 
+              className="w-full py-4 rounded-2xl font-bold text-base border-2 flex items-center justify-center gap-2" 
+              style={{ borderColor: '#EFEFEF', color: '#555', background: '#F9F9F9' }}
+            >
+              🖼️ Escolher da Galeria
+            </button>
+            
+            <button 
+              onClick={() => setIsAvatarModalOpen(false)} 
+              className="w-full py-3 mt-2 rounded-2xl font-bold text-sm text-gray-400"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Header com Gradiente */}
       <div className="relative overflow-hidden px-6 pt-12 pb-16"
@@ -169,10 +208,10 @@ export default function ProfilePage() {
           </button>
         </div>
 
-        {/* Avatar + info (AGORA CLICÁVEL) */}
+        {/* Avatar + info */}
         <div className="relative z-10 flex items-center gap-4">
           <button 
-            onClick={handleChangeAvatar}
+            onClick={() => setIsAvatarModalOpen(true)}
             disabled={isUpdatingAvatar}
             className="relative rounded-2xl shadow-lg transition-transform active:scale-95 disabled:opacity-70 group"
           >
@@ -182,7 +221,6 @@ export default function ProfilePage() {
               </div>
             )}
             
-            {/* Ícone de câmera no cantinho (pista visual) */}
             <div className="absolute -bottom-2 -right-2 bg-white rounded-full p-1.5 shadow-md z-10 text-orange-600">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
@@ -242,7 +280,6 @@ export default function ProfilePage() {
       </div>
 
       <div className="px-5">
-
         {/* Aba Insígnias */}
         {activeTab === 'badges' && (
           profile?.badges?.length === 0 ? (
