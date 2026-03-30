@@ -1,14 +1,22 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
 import { users, followers, routeSessions, routes, userBadges, badges } from '@/lib/db/remote/schema'
 import { eq, and, sql } from 'drizzle-orm'
 
-// 👇 Mágica do Build Estático AQUI TAMBÉM
-export async function GET() {
+// 👇 Mágica do Build Estático AQUI TAMBÉM (Corrigido com NextRequest)
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
+
+    // 👇 Extrai o token enviado pelo Capacitor via Header (CORREÇÃO AQUI)
+    const authHeader = request.headers.get('Authorization')
+    const token = authHeader?.replace('Bearer ', '')
+
+    // Força o Supabase a validar pelo Token (Mobile) ou pelos Cookies (Web)
+    const { data: { user: authUser }, error: authError } = token
+      ? await supabase.auth.getUser(token)
+      : await supabase.auth.getUser()
 
     if (!authUser || authError) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })

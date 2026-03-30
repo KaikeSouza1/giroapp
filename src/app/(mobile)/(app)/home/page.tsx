@@ -60,9 +60,12 @@ export default function HomePage() {
         return
       }
 
+      // 👇 CORREÇÃO AQUI: Enviamos o token nativamente nos headers
+      const headers = { Authorization: `Bearer ${session.access_token}` }
+
       const [profileRes, routesRes] = await Promise.all([
-        fetch('/api/users/me'),
-        fetch('/api/routes'),
+        fetch('/api/users/me', { headers }),
+        fetch('/api/routes', { headers }),
       ])
 
       const profileData = profileRes.ok ? await profileRes.json() : null
@@ -74,7 +77,7 @@ export default function HomePage() {
     }
 
     loadData()
-  }, [])
+  }, [router, supabase.auth])
 
   // Filtro client-side por dificuldade
   const difficultyMap: Record<string, string> = {
@@ -166,6 +169,7 @@ export default function HomePage() {
             </button>
             <Link href="/profile">
               {user?.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img src={user.avatarUrl} alt="Perfil" className="w-9 h-9 rounded-full object-cover shadow-lg border-2 border-white/40" />
               ) : (
                 <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shadow-lg" style={{ background: 'rgba(255,255,255,0.25)', color: 'white' }}>
