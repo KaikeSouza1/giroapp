@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, use, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 
-// 👇 IMPORTS NATIVOS NO TOPO DO ARQUIVO (Isso resolve o bug de não abrir nada!)
+// 👇 IMPORTS NATIVOS NO TOPO DO ARQUIVO
 import { Camera, CameraResultType, CameraSource, CameraDirection } from '@capacitor/camera'
 import { Geolocation } from '@capacitor/geolocation'
 
@@ -44,6 +44,7 @@ type Phase =
   | 'reviewing'
   | 'uploading'
   | 'completed'
+  | 'offline-completed' // <--- FASE OFFLINE ADICIONADA
   | 'error'
 
 type CompletedCheckin = {
@@ -108,6 +109,7 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
   
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [isSyncingData, setIsSyncingData] = useState(false)
 
   const gpsWatchIdRef = useRef<string | null>(null)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
@@ -151,7 +153,6 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
     try {
       setSessionId('sessao_local_' + Date.now())
 
-      // Chamando o Geolocation nativo importado lá no topo
       const watchId = await Geolocation.watchPosition(
         { enableHighAccuracy: true, timeout: 30000 },
         (pos, err) => {
@@ -190,7 +191,6 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
     setError('')
 
     try {
-      // Chamando o Camera nativo importado lá no topo
       const image = await Camera.getPhoto({
         resultType: CameraResultType.DataUrl,
         source: source === 'camera' ? CameraSource.Camera : CameraSource.Photos,
@@ -224,7 +224,6 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
       const wp = route.waypoints[currentWpIndex]
       const distance = distanceToWp ?? 0
 
-      // Simulando salvamento rápido
       await new Promise(res => setTimeout(res, 400))
 
       setCompletedCheckins(prev => [...prev, {
@@ -253,9 +252,117 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
     }
   }
 
+  // 👇 FUNÇÃO DE SINCRONIZAÇÃO REVISADA
+  const handleFinishAndSync = async () => {
+    if (isSyncingData) return
+    setIsSyncingData(true)
+    
+    try {
+      const { Network } = await import('@capacitor/network')
+      const status = await Network.getStatus()
+
+      // ── FLUXO OFFLINE 🌲 ──
+      if (!status.connected) {
+        const pending = JSON.parse(localStorage.getItem('giro_pending_routes') || '[]')
+        
+        // Evita duplicar se ele clicar várias vezes sem querer
+        const alreadySaved = pending.find((p: any) => p.routeId === route?.id && p.elapsedSecs === elapsedSecs)
+        if (!alreadySaved) {
+          pending.push({
+            routeId: route?.id,
+            distanceKm: route?.distanceKm,
+            elapsedSecs,
+            checkins: completedCheckins
+          })
+          localStorage.setItem('giro_pending_routes', JSON.stringify(pending))
+        }
+        
+        setPhase('offline-completed')
+        setIsSyncingData(false)
+        return
+      }
+
+      // ── FLUXO ONLINE 🌐 ──
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error("Usuário não logado.")
+
+      const finalCheckins = []
+
+      // 1. Upload das fotos para o Bucket correto "giro-app"
+      for (const c of completedCheckins) {
+        const resBlob = await fetch(c.photoUrl)
+        const blob = await resBlob.blob()
+        const filePath = `checkins/${session.user.id}/${c.waypointId}-${Date.now()}.jpg`
+        
+        const { error: uploadError } = await supabase.storage
+            .from('giro-app')
+            .upload(filePath, blob, { contentType: 'image/jpeg' })
+            
+        if (uploadError) throw new Error(`Erro no Supabase Storage: ${uploadError.message}`)
+
+        const { data: { publicUrl } } = supabase.storage.from('giro-app').getPublicUrl(filePath)
+        
+        finalCheckins.push({
+          waypointId: c.waypointId,
+          photoUrl: publicUrl,
+          lat: c.lat,
+          lng: c.lng,
+          distance: c.distance
+        })
+      }
+
+      // 2. Salvar tudo no Banco
+      const res = await fetch('/api/sync/complete-route', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          routeId: route?.id,
+          distanceKm: route?.distanceKm,
+          elapsedSecs,
+          checkins: finalCheckins
+        })
+      })
+
+      if (!res.ok) {
+          const errData = await res.json()
+          throw new Error(`Erro na API: ${errData.error || 'Desconhecido'}`)
+      }
+
+      // SUCESSO! Leva pro perfil pra ver a insígnia nova!
+      router.replace('/profile')
+
+    } catch (err: any) {
+      alert(`Falha ao sincronizar:\n${err.message}\n\nTente novamente.`)
+      setIsSyncingData(false)
+    }
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
-  // RENDERIZAÇÃO
+  // RENDERIZAÇÃO DAS TELAS
   // ─────────────────────────────────────────────────────────────────────────
+
+  // ── NOVA TELA: CONCLUÍDO OFFLINE 🌲 ──
+  if (phase === 'offline-completed') {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center font-[family-name:var(--font-dm)] p-6 text-center"
+           style={{ background: '#FFF8F5' }}>
+        <div className="w-24 h-24 rounded-3xl flex items-center justify-center mb-6 shadow-xl" 
+             style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
+          <span className="text-5xl">🌲</span>
+        </div>
+        <h2 className="text-2xl font-black text-gray-900 mb-2">Salvo no celular!</h2>
+        <p className="text-gray-500 text-sm mb-8 leading-relaxed px-4">
+          Você está sem internet no momento. Sua trilha e fotos foram guardadas em segurança no seu aparelho.<br/><br/>
+          Assim que se conectar a uma rede Wi-Fi ou 4G, abra o aplicativo para sincronizar seus dados e receber sua insígnia.
+        </p>
+        <button onClick={() => window.location.href = '/home'} 
+                className="w-full py-4 rounded-2xl text-white font-black text-sm shadow-lg max-w-xs" 
+                style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
+          Voltar ao Início
+        </button>
+      </div>
+    )
+  }
 
   if (phase === 'loading') {
     return (
@@ -330,12 +437,25 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
           )}
 
           <div className="bg-orange-50 w-full p-4 rounded-xl text-center mb-6">
-            <p className="text-orange-700 text-xs font-bold">Os dados foram salvos no seu dispositivo.</p>
-            <p className="text-orange-600/80 text-[10px] mt-1">A sincronização na nuvem acontecerá em breve.</p>
+            <p className="text-orange-700 text-xs font-bold">A trilha acabou!</p>
+            <p className="text-orange-600/80 text-[10px] mt-1">Clique abaixo para enviar suas conquistas para o seu Perfil.</p>
           </div>
 
-          <button onClick={() => router.push('/home')} className="w-full py-4 rounded-2xl text-white font-black text-sm" style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
-            Ir para o início 🏠
+          {/* O BOTÃO MAGICO AQUI */}
+          <button 
+            onClick={handleFinishAndSync} 
+            disabled={isSyncingData}
+            className="w-full py-4 rounded-2xl text-white font-black text-sm flex items-center justify-center shadow-lg disabled:opacity-70" 
+            style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}
+          >
+            {isSyncingData ? (
+              <span className="flex items-center gap-2">
+                 <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                 Enviando para a nuvem...
+              </span>
+            ) : (
+              'Finalizar e Salvar Rota 🚀'
+            )}
           </button>
         </div>
       </div>
