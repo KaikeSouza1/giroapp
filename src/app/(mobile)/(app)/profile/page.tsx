@@ -1,33 +1,47 @@
 'use client'
 
-// src/app/(mobile)/(app)/profile/page.tsx
-// Adicionado: botão de editar foto de perfil com câmera ou galeria
-
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import NextImage from 'next/image'
 import { createBrowserClient } from '@supabase/ssr'
 import TabBar from '@/components/mobile/TabBar'
+// Importação do plugin nativo da Câmera
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 
-type Badge = { id: string; name: string; description: string | null; imageUrl: string; awardedAt: string }
-type CompletedRoute = { id: string; routeName: string; completedAt: string; distanceKm: string | null }
+type Badge = {
+  id: string
+  name: string
+  description: string | null
+  imageUrl: string
+  awardedAt: string
+}
+
+type CompletedRoute = {
+  id: string
+  routeName: string
+  completedAt: string
+  distanceKm: string | null
+}
+
 type ProfileData = {
-  id: string; displayName: string; username: string; bio: string | null;
-  avatarUrl: string | null; isSelfieCaptured: boolean;
-  followersCount: number; followingCount: number;
-  badges: Badge[]; completedRoutes: CompletedRoute[]
+  id: string
+  displayName: string
+  username: string
+  bio: string | null
+  avatarUrl: string | null
+  isSelfieCaptured: boolean
+  followersCount: number
+  followingCount: number
+  badges: Badge[]
+  completedRoutes: CompletedRoute[]
 }
 
 export default function ProfilePage() {
   const router = useRouter()
   const [profile, setProfile] = useState<ProfileData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isUpdatingAvatar, setIsUpdatingAvatar] = useState(false) // Estado de carregamento da foto
   const [activeTab, setActiveTab] = useState<'badges' | 'routes'>('badges')
-
-  // Estados para edição de foto
-  const [showPhotoSheet, setShowPhotoSheet] = useState(false)
-  const [photoUploading, setPhotoUploading] = useState(false)
-  const [photoError, setPhotoError] = useState('')
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -38,85 +52,85 @@ export default function ProfilePage() {
     async function load() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
+
       try {
         const res = await fetch('/api/profile/me', {
           headers: { Authorization: `Bearer ${session.access_token}` }
         })
         const text = await res.text()
-        setProfile(text ? JSON.parse(text) : null)
+        const data = text ? JSON.parse(text) : null
+        setProfile(data)
       } catch (err) {
-        console.error('Erro ao carregar perfil:', err)
+        console.error("Erro ao carregar perfil:", err)
       } finally {
         setLoading(false)
       }
     }
     load()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [router, supabase.auth])
 
   async function handleLogout() {
     await supabase.auth.signOut()
     router.push('/login')
   }
 
-  // ── Troca foto de perfil ──────────────────────────────────────────────────
-  async function changeProfilePhoto(source: 'camera' | 'gallery') {
-    setShowPhotoSheet(false)
-    setPhotoUploading(true)
-    setPhotoError('')
-
+  // 📸 FUNÇÃO PARA TROCAR A FOTO DE PERFIL
+  async function handleChangeAvatar() {
     try {
-      // Import dinâmico — Capacitor não existe no servidor
-      const { Camera, CameraSource, CameraResultType } = await import('@capacitor/camera')
-
+      // 1. Abre o menu nativo perguntando: "Câmera ou Galeria?"
       const image = await Camera.getPhoto({
+        quality: 80,
+        allowEditing: true, // Permite cortar a foto em formato quadrado
         resultType: CameraResultType.DataUrl,
-        source: source === 'camera' ? CameraSource.Camera : CameraSource.Photos,
-        quality: 88,
-        width: 512,
-        height: 512,
-        correctOrientation: true,
+        source: CameraSource.Prompt // Deixa o usuário escolher de onde quer a foto
       })
 
-      if (!image.dataUrl) throw new Error('Nenhuma foto selecionada')
+      if (!image.dataUrl || !profile) return
+      setIsUpdatingAvatar(true)
 
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error('Sessão expirada')
+      if (!session) throw new Error("Não autenticado")
 
-      // Converte dataUrl → Blob e faz upload para o Supabase Storage
-      const blob = await fetch(image.dataUrl).then(r => r.blob())
-      const filePath = `avatars/${session.user.id}/avatar.jpg`
+      // 2. Converte a foto para enviar
+      const resBlob = await fetch(image.dataUrl)
+      const blob = await resBlob.blob()
+      
+      // Um nome de arquivo único para não ficar no cache do navegador
+      const filePath = `avatars/${session.user.id}/profile-${Date.now()}.jpg`
 
-      const { error: uploadErr } = await supabase.storage
-        .from('giro-app')
+      // 3. Faz o upload para o Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from('giro-media')
         .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true })
 
-      if (uploadErr) throw new Error('Falha no upload da foto')
+      if (uploadError) throw new Error('Erro ao enviar a imagem para a nuvem.')
 
+      // 4. Pega a URL pública gerada
       const { data: { publicUrl } } = supabase.storage
-        .from('giro-app')
+        .from('giro-media')
         .getPublicUrl(filePath)
 
-      // Salva a URL no banco via API
-      const updateRes = await fetch('/api/users/update-avatar', {
+      // 5. Salva a nova URL no banco de dados (na API que acabamos de criar)
+      const dbRes = await fetch('/api/profile/update-avatar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ avatarUrl: publicUrl }),
+        body: JSON.stringify({
+          supabaseAuthId: session.user.id,
+          avatarUrl: publicUrl
+        })
       })
-      if (!updateRes.ok) throw new Error('Falha ao atualizar perfil')
 
-      // Atualiza o estado local para ver a nova foto imediatamente
+      if (!dbRes.ok) throw new Error("Erro ao salvar no banco de dados.")
+
+      // 6. Atualiza a foto na tela instantaneamente!
       setProfile(prev => prev ? { ...prev, avatarUrl: publicUrl } : null)
 
     } catch (err: any) {
-      // Cancelo silencioso
-      const isCancelled = ['cancel', 'cancelled', 'canceled', 'dismissed', 'no image']
-        .some(w => err?.message?.toLowerCase().includes(w))
-      if (!isCancelled) {
-        setPhotoError('Não foi possível trocar a foto. Tente novamente.')
+      if (err.message !== 'User cancelled photos app') {
+        alert("Erro ao trocar foto: " + err.message)
       }
     } finally {
-      setPhotoUploading(false)
+      setIsUpdatingAvatar(false)
     }
   }
 
@@ -130,15 +144,14 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 font-[family-name:var(--font-dm)] pb-24 relative">
+    <div className="min-h-screen bg-gray-50 font-[family-name:var(--font-dm)] pb-24">
 
-      {/* ── Header com gradiente ────────────────────────────────────────── */}
+      {/* Header com Gradiente */}
       <div className="relative overflow-hidden px-6 pt-12 pb-16"
         style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
         <svg className="absolute inset-0 w-full h-full opacity-[0.1]" viewBox="0 0 375 200" preserveAspectRatio="xMidYMid slice">
           <path d="M0,100 Q93,60 187,100 Q280,140 375,100" fill="none" stroke="#fff" strokeWidth="1.5"/>
           <path d="M0,60 Q93,20 187,60 Q280,100 375,60" fill="none" stroke="#fff" strokeWidth="1"/>
-          <path d="M0,140 Q93,100 187,140 Q280,180 375,140" fill="none" stroke="#fff" strokeWidth="0.8"/>
         </svg>
 
         {/* Top bar */}
@@ -156,61 +169,46 @@ export default function ProfilePage() {
           </button>
         </div>
 
-        {/* Avatar + info + botão de editar ───────────────────────────────── */}
+        {/* Avatar + info (AGORA CLICÁVEL) */}
         <div className="relative z-10 flex items-center gap-4">
+          <button 
+            onClick={handleChangeAvatar}
+            disabled={isUpdatingAvatar}
+            className="relative rounded-2xl shadow-lg transition-transform active:scale-95 disabled:opacity-70 group"
+          >
+            {isUpdatingAvatar && (
+              <div className="absolute inset-0 bg-black/50 rounded-2xl flex items-center justify-center z-20">
+                <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              </div>
+            )}
+            
+            {/* Ícone de câmera no cantinho (pista visual) */}
+            <div className="absolute -bottom-2 -right-2 bg-white rounded-full p-1.5 shadow-md z-10 text-orange-600">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                <circle cx="12" cy="13" r="4"/>
+              </svg>
+            </div>
 
-          {/* Avatar com botão de edição sobreposto */}
-          <div className="relative flex-shrink-0">
             {profile?.avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={profile.avatarUrl} alt={profile.displayName}
-                className="w-16 h-16 rounded-2xl object-cover shadow-lg"
-                style={{ border: '2px solid rgba(255,255,255,0.4)' }} />
+              <img src={profile.avatarUrl} alt="Avatar" className="w-16 h-16 rounded-2xl object-cover" style={{ border: '2px solid rgba(255,255,255,0.4)' }} />
             ) : (
-              <div className="w-16 h-16 rounded-2xl flex items-center justify-center font-black text-2xl text-white shadow-lg"
-                style={{ background: 'rgba(255,255,255,0.25)', border: '2px solid rgba(255,255,255,0.4)' }}>
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center font-black text-2xl text-white" style={{ background: 'rgba(255,255,255,0.25)', border: '2px solid rgba(255,255,255,0.4)' }}>
                 {profile?.displayName?.charAt(0).toUpperCase() ?? 'U'}
               </div>
             )}
-
-            {/* Botão de câmera sobre o avatar */}
-            <button
-              onClick={() => setShowPhotoSheet(true)}
-              disabled={photoUploading}
-              className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full flex items-center justify-center shadow-lg transition-all active:scale-95 disabled:opacity-50"
-              style={{ background: 'white' }}
-            >
-              {photoUploading ? (
-                <div className="w-3.5 h-3.5 border border-gray-300 border-t-orange-500 rounded-full animate-spin" />
-              ) : (
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#E05300" strokeWidth="2.5">
-                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-                  <circle cx="12" cy="13" r="4"/>
-                </svg>
-              )}
-            </button>
-          </div>
-
-          {/* Nome + usuário */}
-          <div className="min-w-0">
-            <h1 className="text-white font-black text-xl leading-tight truncate">
+          </button>
+          
+          <div>
+            <h1 className="text-white font-black text-xl leading-tight">
               {profile?.displayName ?? 'Aventureiro'}
             </h1>
             <p className="text-white/60 text-sm font-medium mt-0.5">@{profile?.username ?? ''}</p>
-            {profile?.bio && (
-              <p className="text-white/80 text-xs mt-1.5 line-clamp-2">{profile.bio}</p>
-            )}
           </div>
         </div>
 
-        {/* Erro de foto */}
-        {photoError && (
-          <div className="relative z-10 mt-3 rounded-xl px-3 py-2 bg-red-500/20 border border-red-400/30">
-            <p className="text-white text-xs">{photoError}</p>
-          </div>
-        )}
-
-        {/* Stats */}
+        {/* Estatísticas */}
         <div className="relative z-10 flex gap-3 mt-6">
           {[
             { label: 'Rotas', value: profile?.completedRoutes?.length ?? 0 },
@@ -229,7 +227,7 @@ export default function ProfilePage() {
         <div className="absolute bottom-0 left-0 right-0 h-6 bg-gray-50 rounded-t-3xl" />
       </div>
 
-      {/* ── Tabs ──────────────────────────────────────────────────────────── */}
+      {/* Tabs */}
       <div className="flex mx-5 mt-2 rounded-2xl overflow-hidden border border-gray-100 bg-white mb-4 shadow-sm">
         {(['badges', 'routes'] as const).map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)}
@@ -243,25 +241,19 @@ export default function ProfilePage() {
         ))}
       </div>
 
-      {/* ── Conteúdo das tabs ─────────────────────────────────────────────── */}
       <div className="px-5">
+
+        {/* Aba Insígnias */}
         {activeTab === 'badges' && (
           profile?.badges?.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-3">
-              <div className="w-16 h-16 rounded-full bg-orange-50 flex items-center justify-center mb-2">
-                <span className="text-3xl">🏆</span>
-              </div>
+              <div className="w-16 h-16 rounded-full bg-orange-50 flex items-center justify-center mb-2"><span className="text-3xl">🏆</span></div>
               <p className="text-gray-500 font-bold text-sm">Nenhuma insígnia ainda</p>
-              <p className="text-gray-400 text-xs text-center max-w-[200px]">
-                Complete rotas épicas para desbloquear recompensas!
-              </p>
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-3">
               {profile?.badges?.map(badge => (
-                <div key={badge.id} className="bg-white rounded-2xl p-3 text-center shadow-sm"
-                  style={{ border: '1.5px solid #F5F5F5' }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                <div key={badge.id} className="bg-white rounded-2xl p-3 text-center shadow-sm" style={{ border: '1.5px solid #F5F5F5' }}>
                   <img src={badge.imageUrl} alt={badge.name} className="w-12 h-12 rounded-xl mx-auto mb-2 object-cover" />
                   <p className="text-[11px] font-bold text-gray-900 leading-tight line-clamp-2">{badge.name}</p>
                 </div>
@@ -270,34 +262,23 @@ export default function ProfilePage() {
           )
         )}
 
+        {/* Aba Rotas concluídas */}
         {activeTab === 'routes' && (
           profile?.completedRoutes?.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-3">
-              <div className="w-16 h-16 rounded-full bg-orange-50 flex items-center justify-center mb-2">
-                <span className="text-3xl">🗺️</span>
-              </div>
+              <div className="w-16 h-16 rounded-full bg-orange-50 flex items-center justify-center mb-2"><span className="text-3xl">🗺️</span></div>
               <p className="text-gray-500 font-bold text-sm">Nenhuma rota concluída</p>
-              <p className="text-gray-400 text-xs text-center max-w-[200px]">
-                Saia para uma trilha e guarde sua primeira aventura!
-              </p>
             </div>
           ) : (
             <div className="flex flex-col gap-3">
               {profile?.completedRoutes?.map(route => (
-                <div key={route.id} className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm"
-                  style={{ border: '1.5px solid #F5F5F5' }}>
-                  <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
-                    style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-                      <polyline points="20 6 9 17 4 12"/>
-                    </svg>
+                <div key={route.id} className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm" style={{ border: '1.5px solid #F5F5F5' }}>
+                  <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-gray-900 text-sm truncate">{route.routeName}</p>
-                    <p className="text-gray-400 text-xs mt-1 font-medium">
-                      {new Date(route.completedAt).toLocaleDateString('pt-BR')}
-                      {route.distanceKm ? ` • ${route.distanceKm} km` : ''}
-                    </p>
+                    <p className="text-gray-400 text-xs mt-1 font-medium">{new Date(route.completedAt).toLocaleDateString('pt-PT')} {route.distanceKm ? ` • ${route.distanceKm} km` : ''}</p>
                   </div>
                 </div>
               ))}
@@ -305,52 +286,6 @@ export default function ProfilePage() {
           )
         )}
       </div>
-
-      {/* ── Bottom sheet: escolher câmera ou galeria ──────────────────────── */}
-      {showPhotoSheet && (
-        <>
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 bg-black/50 z-50 backdrop-blur-sm"
-            onClick={() => setShowPhotoSheet(false)}
-          />
-
-          {/* Sheet */}
-          <div className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl px-5 pt-4 pb-10 shadow-2xl">
-            {/* Handle */}
-            <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-5" />
-
-            <p className="text-sm font-black text-gray-900 mb-4">Trocar foto de perfil</p>
-
-            <div className="flex flex-col gap-3">
-              <button
-                onClick={() => changeProfilePhoto('camera')}
-                className="w-full py-4 rounded-2xl text-white font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
-                style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}
-              >
-                <span className="text-lg">📷</span>
-                Tirar foto com a câmera
-              </button>
-
-              <button
-                onClick={() => changeProfilePhoto('gallery')}
-                className="w-full py-4 rounded-2xl font-bold text-sm border-2 flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
-                style={{ borderColor: '#E05300', color: '#E05300', background: '#FFF8F5' }}
-              >
-                <span className="text-lg">🖼️</span>
-                Escolher da galeria
-              </button>
-
-              <button
-                onClick={() => setShowPhotoSheet(false)}
-                className="w-full py-3 text-sm text-gray-400 font-semibold"
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </>
-      )}
 
       <TabBar active="profile" />
     </div>
