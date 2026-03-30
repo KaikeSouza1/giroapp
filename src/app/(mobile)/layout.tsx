@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import { Bebas_Neue, DM_Sans } from 'next/font/google'
 import '@/styles/giro-tokens.css'
 
+import OfflineSyncWorker from '@/components/mobile/OfflineSyncWorker'
+
 const bebasNeue = Bebas_Neue({
   weight: '400',
   subsets: ['latin'],
@@ -20,7 +22,11 @@ export const metadata: Metadata = {
 
 export default function MobileLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className={`${bebasNeue.variable} ${dmSans.variable} min-h-screen`}>
+    <div className={`${bebasNeue.variable} ${dmSans.variable} min-h-screen relative`}>
+      
+      {/* 🤖 O Robô Invisível: Fica escutando a internet e sincronizando trilhas pendentes */}
+      <OfflineSyncWorker />
+
       {children}
     </div>
   )
