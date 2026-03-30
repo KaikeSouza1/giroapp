@@ -68,14 +68,11 @@ export default function RegisterPage() {
       const { Camera, CameraSource, CameraResultType } = await import('@capacitor/camera')
 
       const image = await Camera.getPhoto({
-        // DataUrl retorna "data:image/jpeg;base64,XXXX" — ideal para:
-        //   1. Mostrar preview com <img src={dataUrl} />
-        //   2. Converter para Blob depois para upload no Supabase
+        
         resultType: CameraResultType.DataUrl,
         source: source === 'camera' ? CameraSource.Camera : CameraSource.Photos,
         quality: 88,
-        // Selfie de referência: 640x640 é o suficiente para reconhecimento facial
-        // e mantém o tamanho do arquivo razoável para upload
+      
         width: 640,
         height: 640,
         correctOrientation: true, // corrige rotação EXIF automaticamente
