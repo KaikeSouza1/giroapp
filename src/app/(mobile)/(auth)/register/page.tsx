@@ -1,6 +1,16 @@
 'use client'
 
-import { useState, useRef } from 'react'
+// ─────────────────────────────────────────────────────────────────────────────
+// src/app/(mobile)/(auth)/register/page.tsx
+//
+// CORREÇÃO: A versão anterior usava navigator.mediaDevices.getUserMedia, que
+// é uma Web API que NÃO funciona de forma confiável dentro de um WebView do
+// Capacitor (especialmente no iOS, que exige entitlements nativos específicos).
+// Agora usamos o plugin @capacitor/camera, que lida com permissões nativas
+// automaticamente nas duas plataformas.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import NextImage from 'next/image'
@@ -23,10 +33,9 @@ export default function RegisterPage() {
   const [error, setError] = useState('')
   const [step, setStep] = useState<Step>('form')
 
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const streamRef = useRef<MediaStream | null>(null)
+  // A foto agora vem do Capacitor Camera como dataUrl (base64 prefixado)
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null)
+  const [photoLoading, setPhotoLoading] = useState(false)
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
@@ -39,69 +48,53 @@ export default function RegisterPage() {
     boxShadow: focused === field ? '0 0 0 3px rgba(224,83,0,0.08)' : 'none',
   })
 
-  const HeaderLogo = ({ showLogin = false }: { showLogin?: boolean }) => (
-    <div className="relative overflow-hidden px-6 pt-12 pb-10"
-      style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
-      <svg className="absolute inset-0 w-full h-full opacity-[0.12]" viewBox="0 0 375 200" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
-        <path d="M0,90 Q93,130 187,90 Q280,50 375,90" fill="none" stroke="#fff" strokeWidth="1.5"/>
-        <path d="M0,50 Q93,90 187,50 Q280,10 375,50" fill="none" stroke="#fff" strokeWidth="1"/>
-        <path d="M0,130 Q93,170 187,130 Q280,90 375,130" fill="none" stroke="#fff" strokeWidth="0.8"/>
-      </svg>
-      <div className={`relative z-10 mb-6 ${showLogin ? 'flex items-center justify-between' : ''}`}>
-        <NextImage
-          src="/logogiroprincipal.png"
-          alt="GIRO"
-          width={showLogin ? 110 : 130}
-          height={showLogin ? 42 : 50}
-          priority
-          className="drop-shadow-lg"
-        />
-        {showLogin && (
-          <Link href="/login"
-            className="text-xs font-semibold px-4 py-2 rounded-full"
-            style={{ background: 'rgba(255,255,255,0.2)', color: 'white' }}>
-            Entrar
-          </Link>
-        )}
-      </div>
-      <div className="absolute bottom-0 left-0 right-0 h-6 bg-white rounded-t-3xl" />
-    </div>
-  )
-
   async function handleFormSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
     if (form.password !== form.confirmPassword) { setError('As senhas não coincidem.'); return }
     if (form.password.length < 8) { setError('A senha deve ter pelo menos 8 caracteres.'); return }
     setStep('selfie')
-    setTimeout(() => startCamera(), 300)
   }
 
-  async function startCamera() {
+  // ─── Abre câmera ou galeria via Capacitor ─────────────────────────────────
+  // POR QUE IMPORT DINÂMICO: o módulo @capacitor/camera não existe no Node.js
+  // (ambiente de build do Next.js). O import dentro da função garante que ele
+  // só é carregado no browser/nativo, quando o usuário pressiona o botão.
+  async function openCapacitorCamera(source: 'camera' | 'gallery') {
+    setPhotoLoading(true)
+    setError('')
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: 640, height: 640 }
+      const { Camera, CameraSource, CameraResultType } = await import('@capacitor/camera')
+
+      const image = await Camera.getPhoto({
+        // DataUrl retorna "data:image/jpeg;base64,XXXX" — ideal para:
+        //   1. Mostrar preview com <img src={dataUrl} />
+        //   2. Converter para Blob depois para upload no Supabase
+        resultType: CameraResultType.DataUrl,
+        source: source === 'camera' ? CameraSource.Camera : CameraSource.Photos,
+        quality: 88,
+        // Selfie de referência: 640x640 é o suficiente para reconhecimento facial
+        // e mantém o tamanho do arquivo razoável para upload
+        width: 640,
+        height: 640,
+        correctOrientation: true, // corrige rotação EXIF automaticamente
       })
-      streamRef.current = stream
-      if (videoRef.current) videoRef.current.srcObject = stream
-    } catch {
-      setError('Não foi possível acessar a câmera. Verifique as permissões.')
-      setStep('form')
+
+      if (image.dataUrl) {
+        setPhotoDataUrl(image.dataUrl)
+      }
+    } catch (err: any) {
+      // Cancelar a câmera não é um erro — ignoramos silenciosamente
+      const isCancelled = ['cancel', 'cancelled', 'canceled', 'dismissed', 'no image']
+        .some(word => err?.message?.toLowerCase().includes(word))
+
+      if (!isCancelled) {
+        setError('Erro ao acessar câmera. Verifique as permissões nas configurações.')
+      }
+    } finally {
+      setPhotoLoading(false)
     }
-  }
-
-  function stopCamera() {
-    streamRef.current?.getTracks().forEach(t => t.stop())
-  }
-
-  function capturePhoto() {
-    if (!videoRef.current || !canvasRef.current) return
-    const canvas = canvasRef.current
-    canvas.width = videoRef.current.videoWidth
-    canvas.height = videoRef.current.videoHeight
-    canvas.getContext('2d')?.drawImage(videoRef.current, 0, 0)
-    setPhotoDataUrl(canvas.toDataURL('image/jpeg', 0.85))
-    stopCamera()
   }
 
   async function handleFinalSubmit() {
@@ -124,6 +117,8 @@ export default function RegisterPage() {
 
     await supabase.auth.signInWithPassword({ email: form.email, password: form.password })
 
+    // Converte o dataUrl para Blob para upload no Supabase Storage
+    // fetch() em um dataUrl converte para Blob nativamente — sem biblioteca extra
     const res = await fetch(photoDataUrl)
     const blob = await res.blob()
     const filePath = `selfies/${data.user.id}/reference.jpg`
@@ -153,83 +148,158 @@ export default function RegisterPage() {
     setStep('success')
   }
 
-  // ── TELA: Selfie ──────────────────────────────────────
+  const HeaderLogo = ({ showLogin = false }: { showLogin?: boolean }) => (
+    <div className="relative overflow-hidden px-6 pt-12 pb-10"
+      style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
+      <svg className="absolute inset-0 w-full h-full opacity-[0.12]" viewBox="0 0 375 200" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+        <path d="M0,90 Q93,130 187,90 Q280,50 375,90" fill="none" stroke="#fff" strokeWidth="1.5"/>
+        <path d="M0,50 Q93,90 187,50 Q280,10 375,50" fill="none" stroke="#fff" strokeWidth="1"/>
+        <path d="M0,130 Q93,170 187,130 Q280,90 375,130" fill="none" stroke="#fff" strokeWidth="0.8"/>
+      </svg>
+      <div className={`relative z-10 mb-6 ${showLogin ? 'flex items-center justify-between' : ''}`}>
+        <NextImage src="/logogiroprincipal.png" alt="GIRO" width={showLogin ? 110 : 130} height={showLogin ? 42 : 50} priority className="drop-shadow-lg" />
+        {showLogin && (
+          <Link href="/login" className="text-xs font-semibold px-4 py-2 rounded-full" style={{ background: 'rgba(255,255,255,0.2)', color: 'white' }}>
+            Entrar
+          </Link>
+        )}
+      </div>
+      <div className="absolute bottom-0 left-0 right-0 h-6 bg-white rounded-t-3xl" />
+    </div>
+  )
+
+  // ── TELA: Foto de Referência (substitui a tela de vídeo) ──────────────────
   if (step === 'selfie' || step === 'uploading') {
     return (
       <div className="min-h-screen flex flex-col bg-white font-[family-name:var(--font-dm)]">
+
         <div className="relative overflow-hidden px-6 pt-12 pb-10"
           style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
-          <svg className="absolute inset-0 w-full h-full opacity-[0.12]" viewBox="0 0 375 200" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+          <svg className="absolute inset-0 w-full h-full opacity-[0.12]" viewBox="0 0 375 200" preserveAspectRatio="xMidYMid slice">
             <path d="M0,100 Q93,60 187,100 Q280,140 375,100" fill="none" stroke="#fff" strokeWidth="1.5"/>
-            <path d="M0,60 Q93,20 187,60 Q280,100 375,60" fill="none" stroke="#fff" strokeWidth="1"/>
           </svg>
-          <div className="relative z-10 mb-6">
+          <div className="relative z-10 mb-4">
             <NextImage src="/logogiroprincipal.png" alt="GIRO" width={130} height={50} priority className="drop-shadow-lg" />
           </div>
           <div className="relative z-10">
             <h1 className="text-white font-bold text-2xl leading-tight">
-              {photoDataUrl ? 'Ficou boa? 📸' : 'Selfie de referência 🤳'}
+              {photoDataUrl ? 'Ficou boa? 📸' : 'Foto de referência'}
             </h1>
             <p className="text-white/70 text-sm mt-1">
-              {photoDataUrl ? 'Use esta foto ou tire outra' : 'Posicione seu rosto no centro'}
+              {photoDataUrl
+                ? 'Use esta foto ou escolha outra'
+                : 'Usaremos para validar seus check-ins nas trilhas'}
             </p>
           </div>
           <div className="absolute bottom-0 left-0 right-0 h-6 bg-white rounded-t-3xl" />
         </div>
 
-        <div className="flex-1 px-6 pt-6 pb-10 flex flex-col items-center">
-          {photoDataUrl ? (
-            <div className="w-full flex flex-col items-center gap-4">
-              <img src={photoDataUrl} alt="Selfie"
-                className="w-56 h-56 object-cover rounded-3xl shadow-lg"
-                style={{ border: '3px solid #E05300' }} />
-              {error && (
-                <div className="w-full rounded-xl px-4 py-3 bg-red-50 border border-red-100">
-                  <p className="text-red-500 text-sm">{error}</p>
+        <div className="flex-1 px-6 pt-6 pb-10 flex flex-col">
+
+          {/* Preview ou placeholder */}
+          <div
+            className="w-full rounded-3xl overflow-hidden mb-5 flex items-center justify-center relative"
+            style={{ height: '240px', background: '#F5F5F5', border: '2px solid #EFEFEF' }}
+          >
+            {photoDataUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={photoDataUrl} alt="Foto de referência" className="w-full h-full object-cover" />
+            ) : (
+              <div className="flex flex-col items-center gap-3 text-center px-6">
+                <div className="w-20 h-20 rounded-full bg-orange-50 flex items-center justify-center">
+                  <span className="text-4xl">🤳</span>
                 </div>
-              )}
-              <div className="flex gap-3 w-full mt-2">
-                <button onClick={() => { setPhotoDataUrl(null); startCamera() }}
-                  className="flex-1 py-3.5 rounded-xl font-bold text-sm border-2 transition-all"
-                  style={{ borderColor: '#E05300', color: '#E05300' }}>
-                  Tirar outra
-                </button>
-                <button onClick={handleFinalSubmit} disabled={step === 'uploading'}
-                  className="flex-1 py-3.5 rounded-xl text-white font-bold text-sm disabled:opacity-60"
-                  style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
-                  {step === 'uploading' ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Salvando...
-                    </span>
-                  ) : 'Usar esta ✓'}
-                </button>
+                <p className="text-gray-500 text-sm font-semibold">
+                  Tire uma selfie ou escolha<br />uma foto da galeria
+                </p>
+                <p className="text-gray-400 text-xs">
+                  Olhe diretamente para a câmera com boa iluminação
+                </p>
               </div>
+            )}
+
+            {photoLoading && (
+              <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
+                <div className="flex flex-col items-center gap-2">
+                  <div className="w-8 h-8 border-2 border-gray-200 border-t-orange-500 rounded-full animate-spin" />
+                  <p className="text-xs text-gray-500">Abrindo câmera...</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {error && (
+            <div className="rounded-xl px-4 py-3 bg-red-50 border border-red-100 mb-4">
+              <p className="text-red-500 text-sm">{error}</p>
+            </div>
+          )}
+
+          {/* Botões de ação */}
+          {!photoDataUrl ? (
+            // Sem foto: mostrar opções de câmera e galeria
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => openCapacitorCamera('camera')}
+                disabled={photoLoading}
+                className="w-full py-4 rounded-2xl text-white font-bold text-sm disabled:opacity-60 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                style={{ background: 'linear-gradient(135deg, #830200 0%, #E05300 60%, #FF8C00 100%)' }}
+              >
+                <span className="text-lg">📷</span>
+                Tirar selfie com a câmera
+              </button>
+
+              <button
+                onClick={() => openCapacitorCamera('gallery')}
+                disabled={photoLoading}
+                className="w-full py-4 rounded-2xl font-bold text-sm border-2 disabled:opacity-60 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                style={{ borderColor: '#E05300', color: '#E05300', background: '#FFF8F5' }}
+              >
+                <span className="text-lg">🖼️</span>
+                Escolher da galeria
+              </button>
+
+              <button
+                onClick={() => setStep('form')}
+                className="w-full py-3 text-sm text-gray-400 underline"
+              >
+                ← Voltar ao formulário
+              </button>
             </div>
           ) : (
-            <div className="w-full flex flex-col items-center gap-4">
-              <div className="w-full bg-orange-50 rounded-2xl p-4 mb-2">
-                {['Boa iluminação no rosto', 'Olhe direto para a câmera', 'Sem óculos de sol'].map(tip => (
-                  <p key={tip} className="text-xs text-orange-700 mb-1">✓ {tip}</p>
-                ))}
-              </div>
-              <div className="relative w-56 h-56 rounded-3xl overflow-hidden bg-gray-100"
-                style={{ border: '3px solid #E05300' }}>
-                <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
-                  <div className="w-36 h-44 rounded-full border-2 border-white/70" />
-                </div>
-                <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-              </div>
-              <canvas ref={canvasRef} className="hidden" />
-              <button onClick={capturePhoto}
-                className="w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition-all active:scale-95"
-                style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
-                <div className="w-10 h-10 rounded-full bg-white" />
+            // Com foto: confirmar ou trocar
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={handleFinalSubmit}
+                disabled={step === 'uploading'}
+                className="w-full py-4 rounded-2xl text-white font-bold text-sm disabled:opacity-60 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                style={{ background: 'linear-gradient(135deg, #830200 0%, #E05300 60%, #FF8C00 100%)' }}
+              >
+                {step === 'uploading' ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Criando conta...
+                  </>
+                ) : '✓ Usar esta foto e criar conta'}
               </button>
-              <button onClick={() => { stopCamera(); setStep('form') }}
-                className="text-sm text-gray-400 underline">
-                Voltar
-              </button>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => openCapacitorCamera('camera')}
+                  disabled={step === 'uploading' || photoLoading}
+                  className="flex-1 py-3 rounded-2xl font-bold text-sm border-2 disabled:opacity-50 transition-all active:scale-[0.98]"
+                  style={{ borderColor: '#E05300', color: '#E05300' }}
+                >
+                  📷 Câmera
+                </button>
+                <button
+                  onClick={() => openCapacitorCamera('gallery')}
+                  disabled={step === 'uploading' || photoLoading}
+                  className="flex-1 py-3 rounded-2xl font-bold text-sm border-2 disabled:opacity-50 transition-all active:scale-[0.98]"
+                  style={{ borderColor: '#E05300', color: '#E05300' }}
+                >
+                  🖼️ Galeria
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -237,20 +307,11 @@ export default function RegisterPage() {
     )
   }
 
-  // ── TELA: Sucesso ─────────────────────────────────────
+  // ── TELA: Sucesso ─────────────────────────────────────────────────────────
   if (step === 'success') {
     return (
       <div className="min-h-screen flex flex-col bg-white font-[family-name:var(--font-dm)]">
-        <div className="relative overflow-hidden px-6 pt-12 pb-10"
-          style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
-          <svg className="absolute inset-0 w-full h-full opacity-[0.12]" viewBox="0 0 375 200" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
-            <path d="M0,100 Q93,60 187,100 Q280,140 375,100" fill="none" stroke="#fff" strokeWidth="1.5"/>
-          </svg>
-          <div className="relative z-10 mb-6">
-            <NextImage src="/logogiroprincipal.png" alt="GIRO" width={130} height={50} priority className="drop-shadow-lg" />
-          </div>
-          <div className="absolute bottom-0 left-0 right-0 h-6 bg-white rounded-t-3xl" />
-        </div>
+        <HeaderLogo />
         <div className="flex-1 flex flex-col items-center justify-center px-6 pb-10">
           <div className="w-24 h-24 rounded-3xl flex items-center justify-center mb-6 shadow-lg"
             style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
@@ -258,7 +319,7 @@ export default function RegisterPage() {
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2 text-center">Conta criada!</h2>
           <p className="text-gray-400 text-sm text-center leading-relaxed mb-2">
-            Sua selfie de referência foi salva com sucesso.
+            Sua foto de referência foi salva com sucesso.
           </p>
           <p className="text-gray-400 text-sm text-center leading-relaxed mb-8">
             Verifique seu e-mail <span className="font-semibold text-gray-600">{form.email}</span> para ativar a conta.
@@ -273,7 +334,7 @@ export default function RegisterPage() {
     )
   }
 
-  // ── TELA: Formulário ──────────────────────────────────
+  // ── TELA: Formulário ──────────────────────────────────────────────────────
   return (
     <div className="min-h-screen flex flex-col bg-white font-[family-name:var(--font-dm)]">
       <HeaderLogo showLogin />
@@ -285,7 +346,6 @@ export default function RegisterPage() {
         </div>
 
         <form onSubmit={handleFormSubmit} className="flex flex-col gap-4">
-
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-bold text-gray-400 tracking-widest uppercase">Nome completo</label>
             <input name="displayName" type="text" value={form.displayName} onChange={handleChange}
@@ -328,17 +388,14 @@ export default function RegisterPage() {
 
           <div className="rounded-2xl p-4 flex items-start gap-3 mt-1"
             style={{ background: '#FFF8F5', border: '1.5px dashed #E05300' }}>
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-lg"
               style={{ background: '#E05300' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-                <circle cx="12" cy="13" r="4"/>
-              </svg>
+              📷
             </div>
             <div>
-              <p className="text-sm font-bold" style={{ color: '#830200' }}>Selfie obrigatória</p>
+              <p className="text-sm font-bold" style={{ color: '#830200' }}>Foto de referência obrigatória</p>
               <p className="text-xs text-orange-700/60 mt-0.5 leading-relaxed">
-                Na próxima etapa você vai tirar uma selfie para validar seus check-ins nas trilhas.
+                Na próxima etapa você vai tirar uma selfie ou escolher uma foto para validar seus check-ins nas trilhas.
               </p>
             </div>
           </div>
@@ -352,14 +409,13 @@ export default function RegisterPage() {
           <button type="submit"
             className="w-full py-4 rounded-xl text-white font-bold text-sm mt-2 transition-all active:scale-[0.98]"
             style={{ background: 'linear-gradient(135deg, #830200 0%, #E05300 60%, #FF8C00 100%)' }}>
-            Continuar para selfie →
+            Continuar para foto →
           </button>
 
           <p className="text-center text-gray-400 text-sm">
             Já tem conta?{' '}
             <Link href="/login" className="font-bold" style={{ color: '#E05300' }}>Entrar</Link>
           </p>
-
         </form>
       </div>
     </div>
