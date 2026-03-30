@@ -124,7 +124,7 @@ export default function RegisterPage() {
     const filePath = `selfies/${data.user.id}/reference.jpg`
 
     const { error: uploadError } = await supabase.storage
-      .from('giro-media')
+      .from('giro-app')
       .upload(filePath, blob, { upsert: true, contentType: 'image/jpeg' })
 
     if (uploadError) {

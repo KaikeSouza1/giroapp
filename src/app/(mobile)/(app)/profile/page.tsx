@@ -109,7 +109,7 @@ export default function ProfilePage() {
       if (uploadError) throw new Error('Erro ao enviar a imagem para o Supabase.')
 
       const { data: { publicUrl } } = supabase.storage
-        .from('giro-media')
+        .from('giro-app')
         .getPublicUrl(filePath)
 
       const dbRes = await fetch('/api/profile/update-avatar', {
