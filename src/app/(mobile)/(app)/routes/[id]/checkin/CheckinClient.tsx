@@ -4,6 +4,10 @@ import { useEffect, useState, useRef, use, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 
+// 👇 IMPORTS NATIVOS NO TOPO DO ARQUIVO (Isso resolve o bug de não abrir nada!)
+import { Camera, CameraResultType, CameraSource, CameraDirection } from '@capacitor/camera'
+import { Geolocation } from '@capacitor/geolocation'
+
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
 type Waypoint = {
@@ -14,7 +18,7 @@ type Waypoint = {
   longitude: string
   order: number
   radiusMeters: number
-  requiresSelfie: boolean // Mantemos o nome do BD, mas trataremos como "Foto"
+  requiresSelfie: boolean
 }
 
 type RouteDetail = {
@@ -31,15 +35,15 @@ type UserPosition = {
 }
 
 type Phase =
-  | 'loading'         // carregando dados da rota (requer internet inicial)
-  | 'ready'           // dados carregados, aguardando início
-  | 'acquiring-gps'   // GPS ativado, aguardando primeiro fix
-  | 'navigating'      // GPS ativo, usuário a caminho do waypoint
-  | 'near-waypoint'   // dentro do raio — botão de check-in habilitado
-  | 'camera-open'     // aguardando resposta da câmera
-  | 'reviewing'       // foto tirada, mostrando preview antes de confirmar
-  | 'uploading'       // salvando check-in localmente (muito rápido)
-  | 'completed'       // todos os waypoints concluídos 🎉
+  | 'loading'
+  | 'ready'
+  | 'acquiring-gps'
+  | 'navigating'
+  | 'near-waypoint'
+  | 'camera-open'
+  | 'reviewing'
+  | 'uploading'
+  | 'completed'
   | 'error'
 
 type CompletedCheckin = {
@@ -108,7 +112,6 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
   const gpsWatchIdRef = useRef<string | null>(null)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
 
-  // ── Carrega rota inicial (Requer internet rápida no início) ───────────────
   useEffect(() => {
     async function load() {
       const { data: { session } } = await supabase.auth.getSession()
@@ -128,7 +131,6 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
     load()
   }, [routeId, router, supabase.auth])
 
-  // ── GPS Tracking e Cálculo de Raio ────────────────────────────────────────
   useEffect(() => {
     if (!userPosition || !route) return
     const wp = route.waypoints[currentWpIndex]
@@ -141,17 +143,15 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
     if (dist > wp.radiusMeters && phase === 'near-waypoint') setPhase('navigating')
   }, [userPosition, currentWpIndex, route, phase])
 
-  // ── Inicia a Rota (TOTALMENTE OFFLINE) ────────────────────────────────────
+  // ── GPS Tracking ──────────────────────────────────────────────────────────
   const startRoute = useCallback(async () => {
     setPhase('acquiring-gps')
     setError('')
 
     try {
-      // Cria um ID falso localmente para não precisar da API
       setSessionId('sessao_local_' + Date.now())
 
-      const { Geolocation } = await import('@capacitor/geolocation')
-
+      // Chamando o Geolocation nativo importado lá no topo
       const watchId = await Geolocation.watchPosition(
         { enableHighAccuracy: true, timeout: 30000 },
         (pos, err) => {
@@ -178,26 +178,23 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
     if (timerRef.current) clearInterval(timerRef.current)
     if (gpsWatchIdRef.current) {
       try {
-        const { Geolocation } = await import('@capacitor/geolocation')
         await Geolocation.clearWatch({ id: gpsWatchIdRef.current })
       } catch { /* ignorar */ }
       gpsWatchIdRef.current = null
     }
   }
 
-  // ── Abre câmera traseira ou galeria ───────────────────────────────────────
+  // ── Câmera / Galeria Nativas ─────────────────────────────────────────────
   async function openCameraForCheckin(source: 'camera' | 'gallery') {
     setPhase('camera-open')
     setError('')
 
     try {
-      // Adicionamos CameraDirection
-      const { Camera, CameraSource, CameraResultType, CameraDirection } = await import('@capacitor/camera')
-
+      // Chamando o Camera nativo importado lá no topo
       const image = await Camera.getPhoto({
         resultType: CameraResultType.DataUrl,
         source: source === 'camera' ? CameraSource.Camera : CameraSource.Photos,
-        direction: CameraDirection.Rear, // <--- FORÇA CÂMERA TRASEIRA!
+        direction: CameraDirection.Rear,
         quality: 85,
         width: 1080,
         correctOrientation: true,
@@ -209,13 +206,14 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
       setPhase('reviewing')
 
     } catch (err: any) {
+      console.error(err)
       const isCancelled = ['cancel', 'cancelled', 'canceled', 'dismissed', 'no image'].some(w => err?.message?.toLowerCase().includes(w))
       setPhase('near-waypoint')
-      if (!isCancelled) setError('Erro ao acessar câmera.')
+      if (!isCancelled) setError('Erro ao abrir a câmera ou galeria.')
     }
   }
 
-  // ── Confirma check-in: Salva na MEMÓRIA (Não quebra sem internet) ─────────
+  // ── Salvar na Memória (Offline-first) ────────────────────────────────────
   async function confirmCheckin() {
     if (!photoDataUrl || !sessionId || !route || !userPosition) return
 
@@ -226,13 +224,12 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
       const wp = route.waypoints[currentWpIndex]
       const distance = distanceToWp ?? 0
 
-      // Simulamos um processamento rápido (Apenas 400ms e já salva offline!)
+      // Simulando salvamento rápido
       await new Promise(res => setTimeout(res, 400))
 
-      // Salva localmente no estado do React para permitir a navegação offline
       setCompletedCheckins(prev => [...prev, {
         waypointId: wp.id,
-        photoUrl: photoDataUrl, // Guarda o Base64 gerado pelo Capacitor localmente
+        photoUrl: photoDataUrl,
         lat: userPosition.lat,
         lng: userPosition.lng,
         distance: Math.round(distance),
@@ -251,7 +248,7 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
       }
 
     } catch (err: any) {
-      setError('Erro ao salvar check-in no celular. Tente novamente.')
+      setError('Erro ao salvar check-in localmente.')
       setPhase('near-waypoint')
     }
   }
@@ -286,7 +283,6 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
   const currentWp = route?.waypoints[currentWpIndex]
   const progressPercent = route ? (completedCheckins.length / route.waypoints.length) * 100 : 0
 
-  // ── TELA CONCLUÍDA 🎉 ─────────────────────────────────────────────────────
   if (phase === 'completed') {
     return (
       <div className="min-h-screen flex flex-col bg-white font-[family-name:var(--font-dm)]">
@@ -346,7 +342,6 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
     )
   }
 
-  // ── TELA: Reviewing — confirmar foto antes de enviar ──────────────────────
   if (phase === 'reviewing' && photoDataUrl) {
     return (
       <div className="min-h-screen flex flex-col bg-black font-[family-name:var(--font-dm)]">
@@ -381,7 +376,6 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
     )
   }
 
-  // ── TELA PRINCIPAL: Navegação + Check-in ──────────────────────────────────
   const isUploading = phase === 'uploading'
   const isAcquiring = phase === 'acquiring-gps'
   const canCheckin = phase === 'near-waypoint' || phase === 'camera-open'
@@ -390,7 +384,6 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 font-[family-name:var(--font-dm)]">
 
-      {/* Header com gradiente */}
       <div className="relative overflow-hidden px-5 pt-12 pb-16" style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
         <svg className="absolute inset-0 w-full h-full opacity-10" viewBox="0 0 375 200" preserveAspectRatio="xMidYMid slice">
           <path d="M0,100 Q93,60 187,100 Q280,140 375,100" fill="none" stroke="#fff" strokeWidth="1.5"/>
@@ -429,7 +422,6 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
 
       <div className="flex-1 px-5 -mt-2">
 
-        {/* PRONTO PARA INICIAR */}
         {phase === 'ready' && (
           <div className="pt-4">
             <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm mb-4">
@@ -457,7 +449,6 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
           </div>
         )}
 
-        {/* GPS ACQUIRING */}
         {isAcquiring && (
           <div className="pt-6 flex flex-col items-center gap-5">
             <div className="relative w-24 h-24 mt-4">
@@ -474,7 +465,6 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
           </div>
         )}
 
-        {/* NAVEGANDO */}
         {(phase === 'navigating' || phase === 'near-waypoint' || phase === 'camera-open' || isUploading) && currentWp && (
           <div className="pt-4">
 
@@ -531,7 +521,6 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
 
             {error && <div className="rounded-xl px-4 py-3 bg-red-50 border border-red-100 mb-4"><p className="text-red-500 text-sm">{error}</p></div>}
 
-            {/* BOTÕES */}
             {isUploading ? (
               <div className="w-full py-4 rounded-2xl flex items-center justify-center gap-2 text-white font-bold" style={{ background: 'linear-gradient(135deg, #830200, #E05300)', opacity: 0.8 }}>
                 <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Salvando na memória...
