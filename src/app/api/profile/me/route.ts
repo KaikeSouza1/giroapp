@@ -1,19 +1,17 @@
+// src/app/api/profile/me/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
-import { users, followers, routeSessions, routes, userBadges, badges } from '@/lib/db/remote/schema'
-import { eq, and, sql } from 'drizzle-orm'
+import { users, followers, routeSessions, routes, userBadges, badges, checkins } from '@/lib/db/remote/schema'
+import { eq, and, sql, desc } from 'drizzle-orm'
 
-// 👇 Mágica do Build Estático AQUI TAMBÉM (Corrigido com NextRequest)
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
 
-    // 👇 Extrai o token enviado pelo Capacitor via Header (CORREÇÃO AQUI)
     const authHeader = request.headers.get('Authorization')
     const token = authHeader?.replace('Bearer ', '')
 
-    // Força o Supabase a validar pelo Token (Mobile) ou pelos Cookies (Web)
     const { data: { user: authUser }, error: authError } = token
       ? await supabase.auth.getUser(token)
       : await supabase.auth.getUser()
@@ -42,16 +40,25 @@ export async function GET(request: NextRequest) {
       .from(followers)
       .where(eq(followers.followerId, user.id))
 
+    // 👇 BUSCA AS ROTAS CONCLUÍDAS COM AS FOTOS, TEMPO E DATAS
     const completedRoutesRes = await db
       .select({
         id: routeSessions.id,
         routeName: routes.name,
+        routeType: routes.type, // Pega o ícone/tipo da rota
+        startedAt: routeSessions.startedAt,
         completedAt: routeSessions.completedAt,
-        distanceKm: routeSessions.totalDistanceKm
+        distanceKm: routeSessions.totalDistanceKm,
+        // Agrupa as URLs das fotos num array
+        photos: sql<string[]>`array_remove(array_agg(${checkins.selfieImagePath}), NULL)`
       })
       .from(routeSessions)
       .innerJoin(routes, eq(routeSessions.routeId, routes.id))
+      // Faz um join na tabela de checkins para pegar as fotos dessa sessão
+      .leftJoin(checkins, eq(checkins.routeSessionId, routeSessions.id))
       .where(and(eq(routeSessions.userId, user.id), eq(routeSessions.status, 'completed')))
+      .groupBy(routeSessions.id, routes.name, routes.type)
+      .orderBy(desc(routeSessions.completedAt)) // As mais recentes primeiro
 
     const badgesRes = await db
       .select({
@@ -74,10 +81,25 @@ export async function GET(request: NextRequest) {
       isSelfieCaptured: user.isSelfieCaptured ?? false,
       followersCount: Number(followersRes?.count || 0),
       followingCount: Number(followingRes?.count || 0),
-      completedRoutes: completedRoutesRes.map(r => ({
-        ...r,
-        completedAt: r.completedAt ? r.completedAt.toISOString() : new Date().toISOString()
-      })),
+      completedRoutes: completedRoutesRes.map(r => {
+        // Calcula o tempo gasto em minutos
+        let elapsedMinutes = 0
+        if (r.startedAt && r.completedAt) {
+           const diffMs = new Date(r.completedAt).getTime() - new Date(r.startedAt).getTime()
+           elapsedMinutes = Math.floor(diffMs / 60000)
+        }
+
+        return {
+          id: r.id,
+          routeName: r.routeName,
+          routeType: r.routeType,
+          completedAt: r.completedAt ? r.completedAt.toISOString() : new Date().toISOString(),
+          distanceKm: r.distanceKm,
+          elapsedMinutes,
+          // Garante que é um array único de fotos (remove duplicadas se houver)
+          photos: Array.from(new Set(r.photos || [])).filter(Boolean)
+        }
+      }),
       badges: badgesRes.map(b => ({
         ...b,
         awardedAt: b.awardedAt.toISOString()
