@@ -6,23 +6,21 @@ import NextImage from 'next/image'
 import { createBrowserClient } from '@supabase/ssr'
 import TabBar from '@/components/mobile/TabBar'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
+import { uploadImageToBucket } from '@/lib/supabase/storage' // Importando a sua função!
 
-// 👇 NOVA FUNÇÃO AUXILIAR: Converte de forma segura o DataURL para Blob no Capacitor
-function base64ToBlob(base64: string, mimeType: string = 'image/jpeg') {
-  const base64Data = base64.replace(/^data:image\/(png|jpeg|jpg);base64,/, '')
-  const byteCharacters = atob(base64Data)
-  const byteArrays = []
-
-  for (let offset = 0; offset < byteCharacters.length; offset += 512) {
-    const slice = byteCharacters.slice(offset, offset + 512)
-    const byteNumbers = new Array(slice.length)
-    for (let i = 0; i < slice.length; i++) {
-      byteNumbers[i] = slice.charCodeAt(i)
-    }
-    byteArrays.push(new Uint8Array(byteNumbers))
+// Converte Base64 para um objeto File nativo (Mais estável para Web e Capacitor)
+function dataUrlToFile(dataUrl: string, filename: string): File {
+  const arr = dataUrl.split(',')
+  const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg'
+  const bstr = atob(arr[1])
+  let n = bstr.length
+  const u8arr = new Uint8Array(n)
+  
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n)
   }
-
-  return new Blob(byteArrays, { type: mimeType })
+  
+  return new File([u8arr], filename, { type: mime })
 }
 
 type Badge = {
@@ -112,22 +110,14 @@ export default function ProfilePage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error("Não autenticado")
 
-      // 👇 CORREÇÃO: Conversão segura garantida para WebViews do Capacitor
-      const blob = base64ToBlob(image.dataUrl, 'image/jpeg')
+      // 1. Converte o Base64 para um objeto File nativo
+      const file = dataUrlToFile(image.dataUrl, 'profile.jpg')
       
-      const filePath = `avatars/${session.user.id}/profile-${Date.now()}.jpg`
+      // 2. Usa a sua função de Storage!
+      const publicUrl = await uploadImageToBucket(file, 'giro-app', `avatars/${session.user.id}`)
 
-      const { error: uploadError } = await supabase.storage
-        .from('giro-app')
-        .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true })
-
-      if (uploadError) throw new Error('Erro ao enviar a imagem para o Supabase.')
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('giro-app')
-        .getPublicUrl(filePath)
-
-      const dbRes = await fetch('/api/profile/update-avatar', {
+      // 3. Atualiza no banco de dados a URL retornada do Storage
+      const dbRes = await fetch('/api/users/update-avatar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

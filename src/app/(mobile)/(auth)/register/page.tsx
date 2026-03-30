@@ -1,37 +1,25 @@
 'use client'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// src/app/(mobile)/(auth)/register/page.tsx
-//
-// CORREÇÃO: A versão anterior usava navigator.mediaDevices.getUserMedia, que
-// é uma Web API que NÃO funciona de forma confiável dentro de um WebView do
-// Capacitor (especialmente no iOS, que exige entitlements nativos específicos).
-// Agora usamos o plugin @capacitor/camera, que lida com permissões nativas
-// automaticamente nas duas plataformas.
-// ─────────────────────────────────────────────────────────────────────────────
-
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import NextImage from 'next/image'
 import { createBrowserClient } from '@supabase/ssr'
+import { uploadImageToBucket } from '@/lib/supabase/storage' // Importando a sua função!
 
-// 👇 NOVA FUNÇÃO AUXILIAR: Converte de forma segura o DataURL para Blob no Capacitor
-function base64ToBlob(base64: string, mimeType: string = 'image/jpeg') {
-  const base64Data = base64.replace(/^data:image\/(png|jpeg|jpg);base64,/, '')
-  const byteCharacters = atob(base64Data)
-  const byteArrays = []
-
-  for (let offset = 0; offset < byteCharacters.length; offset += 512) {
-    const slice = byteCharacters.slice(offset, offset + 512)
-    const byteNumbers = new Array(slice.length)
-    for (let i = 0; i < slice.length; i++) {
-      byteNumbers[i] = slice.charCodeAt(i)
-    }
-    byteArrays.push(new Uint8Array(byteNumbers))
+// Converte Base64 para um objeto File nativo (Mais estável para Web e Capacitor)
+function dataUrlToFile(dataUrl: string, filename: string): File {
+  const arr = dataUrl.split(',')
+  const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg'
+  const bstr = atob(arr[1])
+  let n = bstr.length
+  const u8arr = new Uint8Array(n)
+  
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n)
   }
-
-  return new Blob(byteArrays, { type: mimeType })
+  
+  return new File([u8arr], filename, { type: mime })
 }
 
 type Field = 'displayName' | 'username' | 'email' | 'password' | 'confirmPassword'
@@ -83,9 +71,9 @@ export default function RegisterPage() {
       const image = await Camera.getPhoto({
         resultType: CameraResultType.DataUrl,
         source: source === 'camera' ? CameraSource.Camera : CameraSource.Photos,
-        quality: 88,
-        width: 640,
-        height: 640,
+        quality: 85,
+        width: 800,
+        height: 800,
         correctOrientation: true,
       })
 
@@ -108,6 +96,7 @@ export default function RegisterPage() {
     if (!photoDataUrl) return
     setStep('uploading')
 
+    // 1. Cria o usuário no Auth do Supabase
     const { data, error: authError } = await supabase.auth.signUp({
       email: form.email,
       password: form.password,
@@ -124,20 +113,21 @@ export default function RegisterPage() {
 
     await supabase.auth.signInWithPassword({ email: form.email, password: form.password })
 
-    // 👇 CORREÇÃO: Conversão segura garantida para WebViews do Capacitor
-    const blob = base64ToBlob(photoDataUrl, 'image/jpeg')
-    const filePath = `selfies/${data.user.id}/reference.jpg`
+    // 2. Converte a foto em um objeto File
+    const file = dataUrlToFile(photoDataUrl, 'reference.jpg')
 
-    const { error: uploadError } = await supabase.storage
-      .from('giro-app')
-      .upload(filePath, blob, { upsert: true, contentType: 'image/jpeg' })
-
-    if (uploadError) {
+    // 3. Faz o upload usando a sua função pronta!
+    let publicUrl = ''
+    try {
+      // Salva no bucket giro-app, pasta selfies/{userId}
+      publicUrl = await uploadImageToBucket(file, 'giro-app', `selfies/${data.user.id}`)
+    } catch (uploadError) {
       setError('Erro ao enviar a selfie. Tente novamente.')
       setStep('selfie')
       return
     }
 
+    // 4. Cria o registro na tabela de usuários (banco de dados)
     await fetch('/api/users/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -146,7 +136,16 @@ export default function RegisterPage() {
         email: form.email,
         displayName: form.displayName,
         username: form.username,
-        selfiePath: filePath,
+      }),
+    })
+
+    // 5. Salva a foto de referência (Selfie) na tabela de usuários
+    await fetch('/api/users/update-selfie', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        supabaseAuthId: data.user.id,
+        selfiePath: publicUrl, // Mandamos a URL pública salva no storage
       }),
     })
 
