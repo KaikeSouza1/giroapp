@@ -16,6 +16,24 @@ import Link from 'next/link'
 import NextImage from 'next/image'
 import { createBrowserClient } from '@supabase/ssr'
 
+// 👇 NOVA FUNÇÃO AUXILIAR: Converte de forma segura o DataURL para Blob no Capacitor
+function base64ToBlob(base64: string, mimeType: string = 'image/jpeg') {
+  const base64Data = base64.replace(/^data:image\/(png|jpeg|jpg);base64,/, '')
+  const byteCharacters = atob(base64Data)
+  const byteArrays = []
+
+  for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+    const slice = byteCharacters.slice(offset, offset + 512)
+    const byteNumbers = new Array(slice.length)
+    for (let i = 0; i < slice.length; i++) {
+      byteNumbers[i] = slice.charCodeAt(i)
+    }
+    byteArrays.push(new Uint8Array(byteNumbers))
+  }
+
+  return new Blob(byteArrays, { type: mimeType })
+}
+
 type Field = 'displayName' | 'username' | 'email' | 'password' | 'confirmPassword'
 type Step = 'form' | 'selfie' | 'uploading' | 'success'
 
@@ -33,7 +51,6 @@ export default function RegisterPage() {
   const [error, setError] = useState('')
   const [step, setStep] = useState<Step>('form')
 
-  // A foto agora vem do Capacitor Camera como dataUrl (base64 prefixado)
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null)
   const [photoLoading, setPhotoLoading] = useState(false)
 
@@ -56,10 +73,6 @@ export default function RegisterPage() {
     setStep('selfie')
   }
 
-  // ─── Abre câmera ou galeria via Capacitor ─────────────────────────────────
-  // POR QUE IMPORT DINÂMICO: o módulo @capacitor/camera não existe no Node.js
-  // (ambiente de build do Next.js). O import dentro da função garante que ele
-  // só é carregado no browser/nativo, quando o usuário pressiona o botão.
   async function openCapacitorCamera(source: 'camera' | 'gallery') {
     setPhotoLoading(true)
     setError('')
@@ -68,21 +81,18 @@ export default function RegisterPage() {
       const { Camera, CameraSource, CameraResultType } = await import('@capacitor/camera')
 
       const image = await Camera.getPhoto({
-        
         resultType: CameraResultType.DataUrl,
         source: source === 'camera' ? CameraSource.Camera : CameraSource.Photos,
         quality: 88,
-      
         width: 640,
         height: 640,
-        correctOrientation: true, // corrige rotação EXIF automaticamente
+        correctOrientation: true,
       })
 
       if (image.dataUrl) {
         setPhotoDataUrl(image.dataUrl)
       }
     } catch (err: any) {
-      // Cancelar a câmera não é um erro — ignoramos silenciosamente
       const isCancelled = ['cancel', 'cancelled', 'canceled', 'dismissed', 'no image']
         .some(word => err?.message?.toLowerCase().includes(word))
 
@@ -114,10 +124,8 @@ export default function RegisterPage() {
 
     await supabase.auth.signInWithPassword({ email: form.email, password: form.password })
 
-    // Converte o dataUrl para Blob para upload no Supabase Storage
-    // fetch() em um dataUrl converte para Blob nativamente — sem biblioteca extra
-    const res = await fetch(photoDataUrl)
-    const blob = await res.blob()
+    // 👇 CORREÇÃO: Conversão segura garantida para WebViews do Capacitor
+    const blob = base64ToBlob(photoDataUrl, 'image/jpeg')
     const filePath = `selfies/${data.user.id}/reference.jpg`
 
     const { error: uploadError } = await supabase.storage
@@ -165,7 +173,6 @@ export default function RegisterPage() {
     </div>
   )
 
-  // ── TELA: Foto de Referência (substitui a tela de vídeo) ──────────────────
   if (step === 'selfie' || step === 'uploading') {
     return (
       <div className="min-h-screen flex flex-col bg-white font-[family-name:var(--font-dm)]">
@@ -193,7 +200,6 @@ export default function RegisterPage() {
 
         <div className="flex-1 px-6 pt-6 pb-10 flex flex-col">
 
-          {/* Preview ou placeholder */}
           <div
             className="w-full rounded-3xl overflow-hidden mb-5 flex items-center justify-center relative"
             style={{ height: '240px', background: '#F5F5F5', border: '2px solid #EFEFEF' }}
@@ -231,9 +237,7 @@ export default function RegisterPage() {
             </div>
           )}
 
-          {/* Botões de ação */}
           {!photoDataUrl ? (
-            // Sem foto: mostrar opções de câmera e galeria
             <div className="flex flex-col gap-3">
               <button
                 onClick={() => openCapacitorCamera('camera')}
@@ -263,7 +267,6 @@ export default function RegisterPage() {
               </button>
             </div>
           ) : (
-            // Com foto: confirmar ou trocar
             <div className="flex flex-col gap-3">
               <button
                 onClick={handleFinalSubmit}
@@ -304,7 +307,6 @@ export default function RegisterPage() {
     )
   }
 
-  // ── TELA: Sucesso ─────────────────────────────────────────────────────────
   if (step === 'success') {
     return (
       <div className="min-h-screen flex flex-col bg-white font-[family-name:var(--font-dm)]">
@@ -331,7 +333,6 @@ export default function RegisterPage() {
     )
   }
 
-  // ── TELA: Formulário ──────────────────────────────────────────────────────
   return (
     <div className="min-h-screen flex flex-col bg-white font-[family-name:var(--font-dm)]">
       <HeaderLogo showLogin />

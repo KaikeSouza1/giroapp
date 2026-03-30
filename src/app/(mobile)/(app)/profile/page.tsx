@@ -7,6 +7,24 @@ import { createBrowserClient } from '@supabase/ssr'
 import TabBar from '@/components/mobile/TabBar'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 
+// 👇 NOVA FUNÇÃO AUXILIAR: Converte de forma segura o DataURL para Blob no Capacitor
+function base64ToBlob(base64: string, mimeType: string = 'image/jpeg') {
+  const base64Data = base64.replace(/^data:image\/(png|jpeg|jpg);base64,/, '')
+  const byteCharacters = atob(base64Data)
+  const byteArrays = []
+
+  for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+    const slice = byteCharacters.slice(offset, offset + 512)
+    const byteNumbers = new Array(slice.length)
+    for (let i = 0; i < slice.length; i++) {
+      byteNumbers[i] = slice.charCodeAt(i)
+    }
+    byteArrays.push(new Uint8Array(byteNumbers))
+  }
+
+  return new Blob(byteArrays, { type: mimeType })
+}
+
 type Badge = {
   id: string
   name: string
@@ -42,7 +60,6 @@ export default function ProfilePage() {
   const [isUpdatingAvatar, setIsUpdatingAvatar] = useState(false)
   const [activeTab, setActiveTab] = useState<'badges' | 'routes'>('badges')
   
-  // Controle do nosso novo Menu Bonitão de Foto
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false)
 
   const supabase = createBrowserClient(
@@ -76,18 +93,17 @@ export default function ProfilePage() {
     router.push('/login')
   }
 
-  // 📸 FUNÇÃO PRINCIPAL: Recebe direto a Câmera ou a Galeria escolhida no nosso menu
   async function takeProfilePicture(source: CameraSource) {
-    setIsAvatarModalOpen(false) // Fecha o menu bonitão
+    setIsAvatarModalOpen(false) 
     
     try {
       const image = await Camera.getPhoto({
         quality: 85,
-        allowEditing: true, // Abre o recortador nativo do Android/iOS
-        width: 800,         // Força um quadrado
-        height: 800,        // Força um quadrado
+        allowEditing: true, 
+        width: 800,         
+        height: 800,        
         resultType: CameraResultType.DataUrl,
-        source: source      // Vai direto pra câmera ou galeria, sem popup feio!
+        source: source      
       })
 
       if (!image.dataUrl || !profile) return
@@ -96,12 +112,11 @@ export default function ProfilePage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error("Não autenticado")
 
-      const resBlob = await fetch(image.dataUrl)
-      const blob = await resBlob.blob()
+      // 👇 CORREÇÃO: Conversão segura garantida para WebViews do Capacitor
+      const blob = base64ToBlob(image.dataUrl, 'image/jpeg')
       
       const filePath = `avatars/${session.user.id}/profile-${Date.now()}.jpg`
 
-      // Upload para o bucket "giro-media"
       const { error: uploadError } = await supabase.storage
         .from('giro-app')
         .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true })
@@ -146,7 +161,6 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-gray-50 font-[family-name:var(--font-dm)] pb-24 relative">
 
-      {/* 🚀 NOSSO MODAL MENU BONITÃO PARA FOTO DE PERFIL */}
       {isAvatarModalOpen && (
         <div 
           className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60 backdrop-blur-sm transition-opacity" 
@@ -185,7 +199,6 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Header com Gradiente */}
       <div className="relative overflow-hidden px-6 pt-12 pb-16"
         style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
         <svg className="absolute inset-0 w-full h-full opacity-[0.1]" viewBox="0 0 375 200" preserveAspectRatio="xMidYMid slice">
@@ -193,7 +206,6 @@ export default function ProfilePage() {
           <path d="M0,60 Q93,20 187,60 Q280,100 375,60" fill="none" stroke="#fff" strokeWidth="1"/>
         </svg>
 
-        {/* Top bar */}
         <div className="relative z-10 flex items-center justify-between mb-6">
           <NextImage src="/logogiroprincipal.png" alt="GIRO" width={80} height={32} priority className="drop-shadow-lg" />
           <button onClick={handleLogout}
@@ -208,7 +220,6 @@ export default function ProfilePage() {
           </button>
         </div>
 
-        {/* Avatar + info */}
         <div className="relative z-10 flex items-center gap-4">
           <button 
             onClick={() => setIsAvatarModalOpen(true)}
@@ -246,7 +257,6 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Estatísticas */}
         <div className="relative z-10 flex gap-3 mt-6">
           {[
             { label: 'Rotas', value: profile?.completedRoutes?.length ?? 0 },
@@ -265,7 +275,6 @@ export default function ProfilePage() {
         <div className="absolute bottom-0 left-0 right-0 h-6 bg-gray-50 rounded-t-3xl" />
       </div>
 
-      {/* Tabs */}
       <div className="flex mx-5 mt-2 rounded-2xl overflow-hidden border border-gray-100 bg-white mb-4 shadow-sm">
         {(['badges', 'routes'] as const).map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)}
@@ -280,7 +289,6 @@ export default function ProfilePage() {
       </div>
 
       <div className="px-5">
-        {/* Aba Insígnias */}
         {activeTab === 'badges' && (
           profile?.badges?.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-3">
@@ -299,7 +307,6 @@ export default function ProfilePage() {
           )
         )}
 
-        {/* Aba Rotas concluídas */}
         {activeTab === 'routes' && (
           profile?.completedRoutes?.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-3">
