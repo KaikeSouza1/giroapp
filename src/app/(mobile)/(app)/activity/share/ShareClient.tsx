@@ -50,6 +50,9 @@ export default function ShareClient() {
   const [bgPhoto, setBgPhoto] = useState<string | null>(null)
   const [isExporting, setIsExporting] = useState(false)
   const [exported, setExported] = useState(false)
+  
+  // NOVO: Estado para controlar o salvamento no banco
+  const [isSaving, setIsSaving] = useState(false)
 
   const {
     activityType,
@@ -60,6 +63,7 @@ export default function ShareClient() {
   } = store
 
   const totalMs = startTime ? Date.now() - startTime - pausedDuration : 0
+  const durationSeconds = Math.floor(totalMs / 1000) // NOVO: Tempo em segundos para o banco
   const avgPaceSec = distanceKm > 0 ? totalMs / 1000 / distanceKm : 0
   const meta = activityType ? ACTIVITY_META[activityType] : null
 
@@ -94,6 +98,40 @@ export default function ShareClient() {
     } catch {}
   }
 
+  // ── LÓGICA NOVA: SALVAR NO BANCO DE DADOS ──
+  async function saveActivityToDb(imageBase64: string | null = null) {
+    if (isSaving || distanceKm === 0) return false
+    setIsSaving(true)
+
+    try {
+      const payload = {
+        activityType,
+        startedAt: startTime ? new Date(startTime).toISOString() : new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+        totalDistanceKm: distanceKm.toFixed(2),
+        durationSeconds,
+        averagePace: formatPace(avgPaceSec),
+        pathCoordinates: coordinates,
+        socialImageBase64: imageBase64 
+      }
+
+      const res = await fetch('/api/activities/save-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+
+      if (!res.ok) throw new Error('Falha ao salvar sessão')
+      return true
+    } catch (error) {
+      console.error('Erro ao salvar no banco:', error)
+      alert('Ops, não conseguimos salvar seu treino na nuvem. Verifique sua conexão.')
+      return false
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   async function handleExportAndShare() {
     if (!shareCardRef.current) return
     setIsExporting(true)
@@ -110,13 +148,18 @@ export default function ShareClient() {
       })
 
       const dataUrl = canvas.toDataURL('image/png')
+      const base64 = dataUrl.split(',')[1]
+
+      // NOVO: Salva no banco antes de exportar
+      if (!exported) {
+        await saveActivityToDb(base64)
+      }
 
       if (Capacitor.isNativePlatform()) {
         const { Filesystem, Directory } = await import('@capacitor/filesystem')
         const { Share } = await import('@capacitor/share')
 
         const fileName = `giro-activity-${Date.now()}.png`
-        const base64 = dataUrl.split(',')[1]
 
         await Filesystem.writeFile({
           path: fileName,
@@ -147,9 +190,13 @@ export default function ShareClient() {
     }
   }
 
-  function handleFinish() {
+  async function handleFinish() {
+    // NOVO: Garante que salva no banco mesmo se ele pular a foto
+    if (!exported) {
+      await saveActivityToDb(null)
+    }
     store.resetActivity()
-    router.replace('/profile')
+    router.replace('/feed') // NOVO: Redireciona pro feed pra ver o post
   }
 
   if (!meta) return null
@@ -167,10 +214,11 @@ export default function ShareClient() {
         </div>
         <button
           onClick={handleFinish}
-          className="text-white/40 text-sm font-semibold px-4 py-2 rounded-full"
+          disabled={isSaving}
+          className="text-white/40 text-sm font-semibold px-4 py-2 rounded-full disabled:opacity-50"
           style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
         >
-          Pular
+          {isSaving && !isExporting ? 'Salvando...' : 'Pular'}
         </button>
       </div>
 
@@ -426,24 +474,26 @@ export default function ShareClient() {
       <div className="px-5 mt-5 pb-12 flex flex-col gap-3">
         <button
           onClick={handleExportAndShare}
-          disabled={isExporting}
+          disabled={isExporting || isSaving}
           className="w-full py-4 rounded-2xl text-white font-black text-base flex items-center justify-center gap-2 disabled:opacity-60"
           style={{
             background: 'linear-gradient(135deg, #830200, #E05300)',
             boxShadow: '0 8px 28px rgba(224,83,0,0.35)',
           }}
         >
-          {isExporting ? (
+          {isExporting || (isSaving && !exported) ? (
             <>
               <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Gerando imagem...
+              Processando...
             </>
           ) : exported ? (
             '✅ Compartilhar novamente'
           ) : (
             <>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-                <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+                <circle cx="18" cy="5" r="3" />
+                <circle cx="6" cy="12" r="3" />
+                <circle cx="18" cy="19" r="3" />
                 <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
                 <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
               </svg>
@@ -454,9 +504,10 @@ export default function ShareClient() {
 
         <button
           onClick={handleFinish}
-          className="text-center text-white/30 text-sm font-semibold py-2"
+          disabled={isSaving}
+          className="text-center text-white/30 text-sm font-semibold py-2 disabled:opacity-50"
         >
-          Ir para o perfil →
+          Finalizar Treino →
         </button>
       </div>
     </div>

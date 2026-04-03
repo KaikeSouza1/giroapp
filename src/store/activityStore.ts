@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 
-export type ActivityType = 'run' | 'cycling' | 'walk'
+// ─── TIPOS TRADUZIDOS PARA BATER COM O BANCO DE DADOS ───
+export type ActivityType = 'corrida' | 'cicloturismo' | 'caminhada'
 export type ActivityStatus = 'idle' | 'running' | 'paused' | 'stopped'
 
 export type Coordinate = {
@@ -176,8 +177,9 @@ export function getElapsedMs(
   return Date.now() - startTime - pausedDuration - extra
 }
 
+// ─── TRADUÇÕES CORRIGIDAS ───
 export const ACTIVITY_META: Record<ActivityType, { label: string; emoji: string; icon: string }> = {
-  run: { label: 'Corrida', emoji: '🏃', icon: '🏃' },
-  cycling: { label: 'Ciclismo', emoji: '🚴', icon: '🚴' },
-  walk: { label: 'Caminhada', emoji: '🚶', icon: '🚶' },
+  corrida: { label: 'Corrida', emoji: '🏃', icon: '🏃' },
+  cicloturismo: { label: 'Ciclismo', emoji: '🚴', icon: '🚴' },
+  caminhada: { label: 'Caminhada', emoji: '🚶', icon: '🚶' },
 }
