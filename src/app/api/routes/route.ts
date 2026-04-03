@@ -14,7 +14,8 @@ export async function GET() {
     const [dbUser] = await db.select().from(users)
       .where(eq(users.supabaseAuthId, user.id)).limit(1)
 
-    if (!dbUser || (dbUser.role !== 'superadmin' && dbUser.role !== 'org_admin')) {
+    // CORRIGIDO: org_admin -> admin_org
+    if (!dbUser || (dbUser.role !== 'superadmin' && dbUser.role !== 'admin_org')) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -32,8 +33,8 @@ export async function GET() {
     .leftJoin(organizations, eq(routes.organizationId, organizations.id))
     .orderBy(desc(routes.createdAt))
 
-    // Org admin só vê as rotas da sua organização
-    const allRoutes = dbUser.role === 'org_admin' && dbUser.organizationId
+    // CORRIGIDO: org_admin -> admin_org
+    const allRoutes = dbUser.role === 'admin_org' && dbUser.organizationId
       ? await query.where(eq(routes.organizationId, dbUser.organizationId))
       : await query
 
@@ -53,14 +54,15 @@ export async function POST(request: NextRequest) {
     const [dbUser] = await db.select().from(users)
       .where(eq(users.supabaseAuthId, user.id)).limit(1)
 
-    if (!dbUser || (dbUser.role !== 'superadmin' && dbUser.role !== 'org_admin')) {
+    // CORRIGIDO: org_admin -> admin_org
+    if (!dbUser || (dbUser.role !== 'superadmin' && dbUser.role !== 'admin_org')) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     const body = await request.json()
 
-    // Org admin usa sempre a própria organização
-    const organizationId = dbUser.role === 'org_admin'
+    // CORRIGIDO: org_admin -> admin_org
+    const organizationId = dbUser.role === 'admin_org'
       ? dbUser.organizationId
       : body.organizationId || null
 
@@ -75,12 +77,12 @@ export async function POST(request: NextRequest) {
       slug,
       description: body.description || null,
       coverImageUrl: body.coverImageUrl || null,
-      difficulty: body.difficulty || 'medium',
+      difficulty: body.difficulty || 'medio', // CORRIGIDO PARA PORTUGUÊS
       type: body.type || 'caminhada',
       distanceKm: body.distanceKm ? body.distanceKm.toString() : null,
       estimatedMinutes: body.estimatedMinutes ? parseInt(body.estimatedMinutes) : null,
       organizationId,
-      status: 'draft',
+      status: 'rascunho', // CORRIGIDO PARA PORTUGUÊS
     }).returning()
 
     // Insere os waypoints se houver
