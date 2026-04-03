@@ -14,6 +14,7 @@ import {
 // ── Auto-pause threshold ──────────────────────────────────────────────────────
 const AUTO_PAUSE_SPEED_KMH = 0.4
 const AUTO_PAUSE_CONSECUTIVE = 4 // N coordinates without movement
+const REQUIRED_ACCURACY_METERS = 20 // Precisão mínima para iniciar a atividade
 
 export default function RecordClient() {
   const router = useRouter()
@@ -41,14 +42,12 @@ export default function RecordClient() {
 
   const { status, activityType, coordinates, startTime, pausedDuration, pauseStartTime } = store
 
-  // ── Start activity on mount ───────────────────────────────────────────────
+  // ── Redirect se não tiver atividade escolhida ─────────────────────────────
   useEffect(() => {
-    if (status === 'idle' && activityType) {
-      store.startActivity()
-    } else if (!activityType) {
+    if (!activityType) {
       router.replace('/activity')
     }
-  }, [])
+  }, [activityType, router])
 
   // ── Elapsed timer ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -137,36 +136,56 @@ export default function RecordClient() {
         (pos, err) => {
           if (err || !pos) return
 
-          setGpsAccuracy(pos.coords.accuracy)
+          const accuracy = pos.coords.accuracy
+          setGpsAccuracy(accuracy)
 
-          const coord: Coordinate = {
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-            accuracy: pos.coords.accuracy,
-            timestamp: Date.now(),
-            altitude: pos.coords.altitude,
+          const lat = pos.coords.latitude
+          const lng = pos.coords.longitude
+
+          // 🛡️ ANTI-BUG: Ignora a "Ilha Nula" (0,0)
+          if (lat === 0 && lng === 0) return
+
+          const currentState = useActivityStore.getState()
+
+          // 🛡️ LÓGICA DE ESPERA: Se estiver idle, espera a precisão chegar em 20m ou menos
+          if (currentState.status === 'idle') {
+            if (accuracy <= REQUIRED_ACCURACY_METERS) {
+              currentState.startActivity()
+            }
+            return // Não faz mais nada até iniciar de verdade
           }
 
-          // Auto-pause logic
-          const { currentSpeedKmH, status: st } = useActivityStore.getState()
-          if (currentSpeedKmH < AUTO_PAUSE_SPEED_KMH && coord.accuracy < 30) {
-            lowSpeedCountRef.current++
-            if (lowSpeedCountRef.current >= AUTO_PAUSE_CONSECUTIVE && st === 'running') {
-              autoPauseRef.current = true
-              useActivityStore.getState().pauseActivity(true)
-              setAutoPauseWarning(true)
-              setTimeout(() => setAutoPauseWarning(false), 3000)
+          // Só grava e calcula auto-pause se a atividade estiver rodando
+          if (currentState.status === 'running') {
+            const coord: Coordinate = {
+              lat,
+              lng,
+              accuracy,
+              timestamp: Date.now(),
+              altitude: pos.coords.altitude,
             }
-          } else {
-            lowSpeedCountRef.current = 0
-            // Auto-resume
-            if (autoPauseRef.current && st === 'pausado') {
-              autoPauseRef.current = false
-              useActivityStore.getState().resumeActivity()
-            }
-          }
 
-          useActivityStore.getState().addCoordinate(coord)
+            // Auto-pause logic
+            if (currentState.currentSpeedKmH < AUTO_PAUSE_SPEED_KMH && accuracy < 30) {
+              lowSpeedCountRef.current++
+              if (lowSpeedCountRef.current >= AUTO_PAUSE_CONSECUTIVE) {
+                autoPauseRef.current = true
+                useActivityStore.getState().pauseActivity(true)
+                setAutoPauseWarning(true)
+                setTimeout(() => setAutoPauseWarning(false), 3000)
+              }
+            } else {
+              lowSpeedCountRef.current = 0
+              // Auto-resume
+              if (autoPauseRef.current) {
+                autoPauseRef.current = false
+                useActivityStore.getState().resumeActivity()
+              }
+            }
+
+            // Só adiciona a coordenada no mapa/store se estiver rodando
+            useActivityStore.getState().addCoordinate(coord)
+          }
         }
       )
     } catch (err) {
@@ -185,17 +204,18 @@ export default function RecordClient() {
     }
   }, [])
 
+  // 🛡️ INICIA O SENSOR DE GPS ASSIM QUE A TELA ABRE (Mesmo sem ter começado a gravar)
   useEffect(() => {
-    if (status === 'running' || status === 'pausado') {
-      startGpsWatch()
-    }
+    startGpsWatch()
     return () => {
       stopGpsWatch()
     }
-  }, [])
+  }, [startGpsWatch, stopGpsWatch])
 
   // ── Long press stop ───────────────────────────────────────────────────────
   function onStopPressStart() {
+    if (status === 'idle') return // Impede de parar o que não começou
+
     setIsLongPressing(true)
     longPressStartRef.current = Date.now()
 
@@ -226,6 +246,7 @@ export default function RecordClient() {
   }
 
   function handlePauseResume() {
+    if (status === 'idle') return
     if (status === 'running') {
       store.pauseActivity()
     } else if (status === 'pausado') {
@@ -242,7 +263,7 @@ export default function RecordClient() {
 
   const accColor =
     !gpsAccuracy ? '#888' :
-    gpsAccuracy <= 10 ? '#22C55E' :
+    gpsAccuracy <= 15 ? '#22C55E' :
     gpsAccuracy <= 30 ? '#EAB308' : '#EF4444'
 
   // SVG circle for long-press progress
@@ -273,7 +294,7 @@ export default function RecordClient() {
             <div className="flex items-center gap-1.5 mt-0.5">
               <div className="w-1.5 h-1.5 rounded-full" style={{ background: accColor }} />
               <p className="text-[10px] font-semibold" style={{ color: accColor }}>
-                {gpsAccuracy ? `GPS ±${Math.round(gpsAccuracy)}m` : 'Aguardando GPS...'}
+                {gpsAccuracy ? `GPS ±${Math.round(gpsAccuracy)}m` : 'Buscando sinal...'}
               </p>
             </div>
           </div>
@@ -282,22 +303,22 @@ export default function RecordClient() {
         <div
           className="px-3 py-1.5 rounded-full flex items-center gap-1.5"
           style={{
-            background: status === 'pausado' ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)',
-            border: `1px solid ${status === 'pausado' ? 'rgba(239,68,68,0.3)' : 'rgba(34,197,94,0.3)'}`,
+            background: status === 'idle' ? 'rgba(234,179,8,0.15)' : status === 'pausado' ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)',
+            border: `1px solid ${status === 'idle' ? 'rgba(234,179,8,0.3)' : status === 'pausado' ? 'rgba(239,68,68,0.3)' : 'rgba(34,197,94,0.3)'}`,
           }}
         >
           <div
             className="w-1.5 h-1.5 rounded-full"
             style={{
-              background: status === 'pausado' ? '#EF4444' : '#22C55E',
-              animation: status === 'running' ? 'pulse 2s infinite' : 'none',
+              background: status === 'idle' ? '#EAB308' : status === 'pausado' ? '#EF4444' : '#22C55E',
+              animation: status === 'running' ? 'pulse 2s infinite' : status === 'idle' ? 'ping 1.5s infinite' : 'none',
             }}
           />
           <p
             className="text-xs font-black"
-            style={{ color: status === 'pausado' ? '#EF4444' : '#22C55E' }}
+            style={{ color: status === 'idle' ? '#EAB308' : status === 'pausado' ? '#EF4444' : '#22C55E' }}
           >
-            {status === 'running' ? 'GRAVANDO' : store.isAutoPaused ? 'AUTO PAUSA' : 'PAUSADO'}
+            {status === 'idle' ? 'AGUARDANDO GPS' : status === 'running' ? 'GRAVANDO' : store.isAutoPaused ? 'AUTO PAUSA' : 'PAUSADO'}
           </p>
         </div>
       </div>
@@ -339,7 +360,25 @@ export default function RecordClient() {
       <div className="flex-1 mx-5 rounded-3xl overflow-hidden relative" style={{ minHeight: 200 }}>
         <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
 
-        {!mapReady && (
+        {/* LOADING DO GPS - Fica por cima do mapa até bater os 20 metros */}
+        {status === 'idle' && (
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center z-50 backdrop-blur-md"
+            style={{ background: 'rgba(8,8,8,0.75)' }}
+          >
+            <div
+              className="w-12 h-12 rounded-full animate-spin mb-4"
+              style={{ border: '3px solid rgba(255,255,255,0.1)', borderTop: '3px solid #EAB308' }}
+            />
+            <p className="text-white font-black text-lg text-center px-4">Buscando sinal GPS...</p>
+            <p className="text-white/60 text-xs mt-2 font-bold text-center px-6">
+              Vá para uma área a céu aberto.<br/>
+              Precisão atual: <span style={{ color: accColor }}>{gpsAccuracy ? `${Math.round(gpsAccuracy)}m` : '--'}</span> (Alvo: {REQUIRED_ACCURACY_METERS}m)
+            </p>
+          </div>
+        )}
+
+        {!mapReady && status !== 'idle' && (
           <div
             className="absolute inset-0 flex items-center justify-center"
             style={{ background: '#111' }}
@@ -381,13 +420,12 @@ export default function RecordClient() {
             )}
           </svg>
           <button
-            onTouchStart={onStopPressStart}
-            onTouchEnd={onStopPressEnd}
-            onTouchCancel={onStopPressEnd}
-            onMouseDown={onStopPressStart}
-            onMouseUp={onStopPressEnd}
-            onMouseLeave={onStopPressEnd}
-            className="w-16 h-16 rounded-full flex items-center justify-center active:scale-95 transition-transform"
+            onPointerDown={onStopPressStart}
+            onPointerUp={onStopPressEnd}
+            onPointerCancel={onStopPressEnd}
+            onPointerLeave={onStopPressEnd}
+            disabled={status === 'idle'}
+            className="w-16 h-16 rounded-full flex items-center justify-center active:scale-95 transition-transform disabled:opacity-30"
             style={{
               background: isLongPressing
                 ? 'rgba(239,68,68,0.2)'
@@ -405,7 +443,8 @@ export default function RecordClient() {
         {/* Pause / Resume — big central button */}
         <button
           onClick={handlePauseResume}
-          className="w-20 h-20 rounded-full flex items-center justify-center active:scale-95 transition-all"
+          disabled={status === 'idle'}
+          className="w-20 h-20 rounded-full flex items-center justify-center active:scale-95 transition-all disabled:opacity-30"
           style={{
             background:
               status === 'running'
@@ -414,7 +453,7 @@ export default function RecordClient() {
             boxShadow:
               status === 'running'
                 ? '0 8px 28px rgba(224,83,0,0.5)'
-                : '0 8px 28px rgba(34,197,94,0.5)',
+                : status === 'idle' ? 'none' : '0 8px 28px rgba(34,197,94,0.5)',
           }}
         >
           {status === 'running' ? (
