@@ -4,9 +4,9 @@ import { useRouter } from 'next/navigation'
 import { useActivityStore, ActivityType } from '@/store/activityStore'
 
 const TYPES: { type: ActivityType; label: string; emoji: string; desc: string; color: string }[] = [
-  { type: 'run', label: 'Corrida', emoji: '🏃', desc: 'Registre sua corrida ao ar livre', color: '#E05300' },
-  { type: 'cycling', label: 'Ciclismo', emoji: '🚴', desc: 'Pedal urbano ou trilha off-road', color: '#3B82F6' },
-  { type: 'walk', label: 'Caminhada', emoji: '🚶', desc: 'Registre seu passeio ou trilha leve', color: '#22C55E' },
+  { type: 'corrida', label: 'Corrida', emoji: '🏃', desc: 'Registre sua corrida ao ar livre', color: '#E05300' },
+  { type: 'cicloturismo', label: 'Ciclismo', emoji: '🚴', desc: 'Pedal urbano ou trilha off-road', color: '#3B82F6' },
+  { type: 'caminhada', label: 'Caminhada', emoji: '🚶', desc: 'Registre seu passeio ou trilha leve', color: '#22C55E' },
 ]
 
 export default function ActivitySetupPage() {
