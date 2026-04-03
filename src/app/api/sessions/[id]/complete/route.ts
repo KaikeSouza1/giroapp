@@ -20,7 +20,7 @@ export async function PATCH(
 
     await db.update(routeSessions)
       .set({
-        status: 'completed',
+        status: 'concluido',
         completedAt: new Date(),
         totalDistanceKm: totalDistanceKm ? totalDistanceKm.toString() : null,
       })

@@ -28,12 +28,12 @@ export const LOCAL_SCHEMA_SQL = `
   );
 
   -- FILA DE SINCRONIZAÇÃO — coração do offline-first
-  -- Cada ação offline vira uma linha aqui com status 'pending'
+  -- Cada ação offline vira uma linha aqui com status 'pendente'
   CREATE TABLE IF NOT EXISTS sync_queue (
     id            TEXT PRIMARY KEY,    -- UUID local gerado na hora
     entity_type   TEXT NOT NULL,       -- 'checkin' | 'route_session'
     payload       TEXT NOT NULL,       -- JSON serializado com TODOS os dados
-    status        TEXT DEFAULT 'pending',  -- pending | syncing | synced | error
+    status        TEXT DEFAULT 'pendente',  -- pending | syncing | synced | error
     attempts      INTEGER DEFAULT 0,
     last_error    TEXT,
     created_at    TEXT NOT NULL,       -- quando o evento aconteceu offline
@@ -45,7 +45,7 @@ export const LOCAL_SCHEMA_SQL = `
     id          TEXT PRIMARY KEY,
     route_id    TEXT NOT NULL,
     user_id     TEXT NOT NULL,
-    status      TEXT DEFAULT 'in_progress',
+    status      TEXT DEFAULT 'em_andamento',
     started_at  TEXT NOT NULL,
     completed_at TEXT,
     FOREIGN KEY (route_id) REFERENCES local_routes(id)
@@ -60,7 +60,7 @@ export const LOCAL_SCHEMA_SQL = `
     longitude           REAL NOT NULL,
     selfie_image_base64 TEXT,          -- foto salva como base64 no SQLite
     captured_at         TEXT NOT NULL,
-    sync_status         TEXT DEFAULT 'pending',  -- pending | synced
+    sync_status         TEXT DEFAULT 'pendente',  -- pending | synced
     FOREIGN KEY (session_id) REFERENCES local_sessions(id),
     FOREIGN KEY (waypoint_id) REFERENCES local_waypoints(id)
   );

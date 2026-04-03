@@ -81,10 +81,10 @@ export default function HomePage() {
 
   // Filtro client-side por dificuldade
   const difficultyMap: Record<string, string> = {
-    Fácil: 'easy',
-    Médio: 'medium',
-    Difícil: 'hard',
-    Extremo: 'extreme',
+    Fácil: 'facil',
+    Médio: 'medio',
+    Difícil: 'dificil',
+    Extremo: 'extremo',
   }
 
   const filteredRoutes =

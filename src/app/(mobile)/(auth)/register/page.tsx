@@ -81,7 +81,7 @@ export default function RegisterPage() {
         setPhotoDataUrl(image.dataUrl)
       }
     } catch (err: any) {
-      const isCancelled = ['cancel', 'cancelled', 'canceled', 'dismissed', 'no image']
+      const isCancelled = ['cancel', 'cancelado', 'canceled', 'dismissed', 'no image']
         .some(word => err?.message?.toLowerCase().includes(word))
 
       if (!isCancelled) {

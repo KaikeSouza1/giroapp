@@ -160,7 +160,7 @@ export default function RecordClient() {
           } else {
             lowSpeedCountRef.current = 0
             // Auto-resume
-            if (autoPauseRef.current && st === 'paused') {
+            if (autoPauseRef.current && st === 'pausado') {
               autoPauseRef.current = false
               useActivityStore.getState().resumeActivity()
             }
@@ -186,7 +186,7 @@ export default function RecordClient() {
   }, [])
 
   useEffect(() => {
-    if (status === 'running' || status === 'paused') {
+    if (status === 'running' || status === 'pausado') {
       startGpsWatch()
     }
     return () => {
@@ -228,7 +228,7 @@ export default function RecordClient() {
   function handlePauseResume() {
     if (status === 'running') {
       store.pauseActivity()
-    } else if (status === 'paused') {
+    } else if (status === 'pausado') {
       store.resumeActivity()
     }
   }
@@ -282,20 +282,20 @@ export default function RecordClient() {
         <div
           className="px-3 py-1.5 rounded-full flex items-center gap-1.5"
           style={{
-            background: status === 'paused' ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)',
-            border: `1px solid ${status === 'paused' ? 'rgba(239,68,68,0.3)' : 'rgba(34,197,94,0.3)'}`,
+            background: status === 'pausado' ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)',
+            border: `1px solid ${status === 'pausado' ? 'rgba(239,68,68,0.3)' : 'rgba(34,197,94,0.3)'}`,
           }}
         >
           <div
             className="w-1.5 h-1.5 rounded-full"
             style={{
-              background: status === 'paused' ? '#EF4444' : '#22C55E',
+              background: status === 'pausado' ? '#EF4444' : '#22C55E',
               animation: status === 'running' ? 'pulse 2s infinite' : 'none',
             }}
           />
           <p
             className="text-xs font-black"
-            style={{ color: status === 'paused' ? '#EF4444' : '#22C55E' }}
+            style={{ color: status === 'pausado' ? '#EF4444' : '#22C55E' }}
           >
             {status === 'running' ? 'GRAVANDO' : store.isAutoPaused ? 'AUTO PAUSA' : 'PAUSADO'}
           </p>

@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
       localId: uuidv4(),
       userId: dbUser.id, // <-- CORREÇÃO: Usando dbUser.id em vez de user.id (Auth)
       routeId: body.routeId,
-      status: 'completed',
+      status: 'concluido',
       startedAt: new Date(Date.now() - (body.elapsedSecs * 1000)),
       completedAt: new Date(),
       totalDistanceKm: body.distanceKm?.toString() || '0'

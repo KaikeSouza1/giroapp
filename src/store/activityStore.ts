@@ -3,7 +3,7 @@ import { subscribeWithSelector } from 'zustand/middleware'
 
 // ─── TIPOS TRADUZIDOS PARA BATER COM O BANCO DE DADOS ───
 export type ActivityType = 'corrida' | 'cicloturismo' | 'caminhada'
-export type ActivityStatus = 'idle' | 'running' | 'paused' | 'stopped'
+export type ActivityStatus = 'idle' | 'running' | 'pausado' | 'stopped'
 
 export type Coordinate = {
   lat: number
@@ -79,7 +79,7 @@ export const useActivityStore = create<ActivityStore>()(
 
     pauseActivity: (auto = false) => {
       if (get().status !== 'running') return
-      set({ status: 'paused', pauseStartTime: Date.now(), isAutoPaused: auto })
+      set({ status: 'pausado', pauseStartTime: Date.now(), isAutoPaused: auto })
     },
 
     resumeActivity: () => {
@@ -95,7 +95,7 @@ export const useActivityStore = create<ActivityStore>()(
 
     stopActivity: () => {
       const { pauseStartTime, pausedDuration, status } = get()
-      const extra = status === 'paused' && pauseStartTime ? Date.now() - pauseStartTime : 0
+      const extra = status === 'pausado' && pauseStartTime ? Date.now() - pauseStartTime : 0
       set({
         status: 'stopped',
         pausedDuration: pausedDuration + extra,

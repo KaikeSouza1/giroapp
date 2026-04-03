@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
           capturedLongitude: payload.longitude.toString(),
           selfieImagePath: payload.selfieBase64,
           capturedAtOffline: new Date(payload.capturedAt),
-          biometricStatus: 'pending',
+          biometricStatus: 'pendente',
         }).onConflictDoNothing({ target: checkins.localId })
         confirmed.push({ localId: payload.localId, syncedAt: new Date().toISOString() })
       }

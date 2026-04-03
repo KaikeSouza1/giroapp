@@ -43,7 +43,7 @@ type Phase =
   | 'camera-open'
   | 'reviewing'
   | 'uploading'
-  | 'completed'
+  | 'concluido'
   | 'offline-completed' // <--- FASE OFFLINE ADICIONADA
   | 'error'
 
@@ -207,7 +207,7 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
 
     } catch (err: any) {
       console.error(err)
-      const isCancelled = ['cancel', 'cancelled', 'canceled', 'dismissed', 'no image'].some(w => err?.message?.toLowerCase().includes(w))
+      const isCancelled = ['cancel', 'cancelado', 'canceled', 'dismissed', 'no image'].some(w => err?.message?.toLowerCase().includes(w))
       setPhase('near-waypoint')
       if (!isCancelled) setError('Erro ao abrir a câmera ou galeria.')
     }
@@ -240,7 +240,7 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
 
       if (isLast) {
         await stopGpsAndTimer()
-        setPhase('completed')
+        setPhase('concluido')
       } else {
         setCurrentWpIndex(i => i + 1)
         setPhase('navigating')
@@ -390,7 +390,7 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
   const currentWp = route?.waypoints[currentWpIndex]
   const progressPercent = route ? (completedCheckins.length / route.waypoints.length) * 100 : 0
 
-  if (phase === 'completed') {
+  if (phase === 'concluido') {
     return (
       <div className="min-h-screen flex flex-col bg-white font-[family-name:var(--font-dm)]">
         <div className="relative overflow-hidden px-6 pt-12 pb-16" style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>

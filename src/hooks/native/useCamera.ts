@@ -17,14 +17,14 @@ export type CapturedPhoto = {
   base64: string        // dados da imagem sem o prefixo "data:image/jpeg;base64,"
   webPath: string       // URI para usar diretamente em <img src={webPath} />
   mimeType: 'image/jpeg'
-  size: 'large' | 'medium' | 'small' // qualidade aproximada usada
+  size: 'large' | 'medio' | 'small' // qualidade aproximada usada
 }
 
 export type CameraState = {
   photo: CapturedPhoto | null
   loading: boolean
   error: string | null
-  takePhoto: (quality?: 'large' | 'medium' | 'small') => Promise<CapturedPhoto | null>
+  takePhoto: (quality?: 'large' | 'medio' | 'small') => Promise<CapturedPhoto | null>
   openGallery: () => Promise<CapturedPhoto | null>
   clearPhoto: () => void
 }
@@ -43,7 +43,7 @@ export function useCamera(): CameraState {
 
   // ── Função interna compartilhada entre câmera e galeria ──────────────────
   const capture = useCallback(
-    async (source: 'camera' | 'gallery', quality: 'large' | 'medium' | 'small' = 'medium'): Promise<CapturedPhoto | null> => {
+    async (source: 'camera' | 'gallery', quality: 'large' | 'medio' | 'small' = 'medio'): Promise<CapturedPhoto | null> => {
       setLoading(true)
       setError(null)
 
@@ -63,8 +63,8 @@ export function useCamera(): CameraState {
 
           // Redimensionamento automático — economiza espaço no SQLite
           // e acelera o upload posterior para o Supabase
-          width: quality === 'large' ? 1280 : quality === 'medium' ? 960 : 640,
-          height: quality === 'large' ? 1280 : quality === 'medium' ? 960 : 640,
+          width: quality === 'large' ? 1280 : quality === 'medio' ? 960 : 640,
+          height: quality === 'large' ? 1280 : quality === 'medio' ? 960 : 640,
 
           // Corrige automaticamente a orientação EXIF (evita foto de lado)
           correctOrientation: true,
@@ -92,7 +92,7 @@ export function useCamera(): CameraState {
       } catch (err: any) {
         // O usuário cancelou a câmera — não é um erro real
         if (
-          err?.message?.includes('cancelled') ||
+          err?.message?.includes('cancelado') ||
           err?.message?.includes('canceled') ||
           err?.message?.includes('No image picked') ||
           err?.message?.includes('User cancelled')
@@ -113,12 +113,12 @@ export function useCamera(): CameraState {
   )
 
   const takePhoto = useCallback(
-    (quality: 'large' | 'medium' | 'small' = 'medium') => capture('camera', quality),
+    (quality: 'large' | 'medio' | 'small' = 'medio') => capture('camera', quality),
     [capture]
   )
 
   const openGallery = useCallback(
-    () => capture('gallery', 'medium'),
+    () => capture('gallery', 'medio'),
     [capture]
   )
 

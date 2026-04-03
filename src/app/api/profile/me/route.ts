@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
       .innerJoin(routes, eq(routeSessions.routeId, routes.id))
       // Faz um join na tabela de checkins para pegar as fotos dessa sessão
       .leftJoin(checkins, eq(checkins.routeSessionId, routeSessions.id))
-      // CORRIGIDO AQUI: 'completed' para 'concluido'
+      // CORRIGIDO AQUI: 'concluido' para 'concluido'
       .where(and(eq(routeSessions.userId, user.id), eq(routeSessions.status, 'concluido')))
       .groupBy(routeSessions.id, routes.name, routes.type)
       .orderBy(desc(routeSessions.completedAt)) // As mais recentes primeiro

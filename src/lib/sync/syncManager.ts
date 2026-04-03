@@ -4,7 +4,7 @@ interface SyncQueueItem {
   id: string
   entity_type: 'checkin' | 'route_session'
   payload: string
-  status: 'pending' | 'syncing' | 'synced' | 'error'
+  status: 'pendente' | 'syncing' | 'synced' | 'error'
   attempts: number
   last_error: string | null
   created_at: string
@@ -70,7 +70,7 @@ class SyncManager {
       id: checkinData.localId,
       entity_type: 'checkin',
       payload: JSON.stringify(checkinData),
-      status: 'pending',
+      status: 'pendente',
       attempts: 0,
       last_error: null,
       created_at: checkinData.capturedAt,

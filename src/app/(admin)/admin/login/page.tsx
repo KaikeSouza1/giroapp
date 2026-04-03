@@ -36,7 +36,7 @@ export default function AdminLoginPage() {
     const user = await res.json()
 
     // Verifica se tem permissão para acessar o painel (Superadmin ou Admin de Organização)
-    if (user?.role !== 'superadmin' && user?.role !== 'org_admin') {
+    if (user?.role !== 'superadmin' && user?.role !== 'admin_org') {
       await supabase.auth.signOut()
       setError('Acesso negado. Esta conta não tem permissão de administrador.')
       setLoading(false)

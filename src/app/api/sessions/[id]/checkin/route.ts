@@ -39,7 +39,7 @@ export async function POST(
       capturedLongitude: capturedLongitude.toString(),
       distanceFromWaypointMeters: distanceFromWaypointMeters?.toString() ?? null,
       selfieImagePath,
-      biometricStatus: 'pending',
+      biometricStatus: 'pendente',
       capturedAtOffline: new Date(),
     }).returning()
 

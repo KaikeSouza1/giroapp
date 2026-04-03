@@ -28,7 +28,7 @@ export default function NewRoutePage() {
   const [form, setForm] = useState({
     name: '',
     description: '',
-    difficulty: 'medium',
+    difficulty: 'medio',
     type: 'caminhada',
     distanceKm: '',
     estimatedMinutes: '',
@@ -407,10 +407,10 @@ export default function NewRoutePage() {
                         className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 outline-none"
                         style={inputStyle}
                       >
-                        <option value="easy">🟢 Fácil</option>
-                        <option value="medium">🟡 Médio</option>
-                        <option value="hard">🔴 Difícil</option>
-                        <option value="extreme">🟣 Extremo</option>
+                        <option value="facil">🟢 Fácil</option>
+                        <option value="medio">🟡 Médio</option>
+                        <option value="dificil">🔴 Difícil</option>
+                        <option value="extremo">🟣 Extremo</option>
                       </select>
                     </div>
                   </div>

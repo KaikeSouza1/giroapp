@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
       .where(and(
         eq(routeSessions.userId, dbUser.id),
         eq(routeSessions.routeId, routeId),
-        eq(routeSessions.status, 'in_progress')
+        eq(routeSessions.status, 'em_andamento')
       ))
       .limit(1)
 
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
       localId,
       userId: dbUser.id,
       routeId,
-      status: 'in_progress',
+      status: 'em_andamento',
       startedAt: new Date(),
     }).returning()
 

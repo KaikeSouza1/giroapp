@@ -159,7 +159,7 @@ export default function RoutesPage() {
 </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-2">
-                        {route.status === 'draft' && (
+                        {route.status === 'rascunho' && (
                           <button
                             onClick={() => updateStatus(route.id, 'published')}
                             className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all"
