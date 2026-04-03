@@ -15,6 +15,8 @@ export default function SummaryClient() {
   const store = useActivityStore()
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
+  const isInitRef = useRef(false) // Trava para evitar que o mapa renderize duas vezes e quebre
+  
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -44,22 +46,29 @@ export default function SummaryClient() {
   const meta = activityType ? ACTIVITY_META[activityType] : null
 
   useEffect(() => {
-    if (store.status !== 'stopped') {
-      router.replace('/activity')
-      return
+    // Garante que o status pare, sem dar "flicker" redirecionando pra trás
+    if (store.status === 'running' || store.status === 'pausado') {
+       store.stopActivity()
     }
+    
+    if (isInitRef.current) return
+    isInitRef.current = true
+    
     initMap()
   }, [])
 
   async function initMap() {
     if (!mapContainerRef.current || mapRef.current) return
+    // Evita o crash "Map container is already initialized" do Leaflet
+    if ((mapContainerRef.current as any)._leaflet_id) return 
+
     const L = (await import('leaflet')).default
     await import('leaflet/dist/leaflet.css')
 
     const map = L.map(mapContainerRef.current, { zoomControl: false, attributionControl: false })
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map)
 
-    if (coordinates.length > 1) {
+    if (coordinates.length > 0) {
       const latlngs = coordinates.map((c) => [c.lat, c.lng] as [number, number])
 
       L.polyline(latlngs, {
@@ -78,13 +87,26 @@ export default function SummaryClient() {
       L.marker(latlngs[0], { icon: startIcon }).addTo(map)
 
       // End dot
-      const endIcon = L.divIcon({
-        html: `<div style="width:14px;height:14px;border-radius:50%;background:#EF4444;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>`,
-        className: '', iconSize: [14, 14], iconAnchor: [7, 7],
-      })
-      L.marker(latlngs[latlngs.length - 1], { icon: endIcon }).addTo(map)
+      if (latlngs.length > 1) {
+        const endIcon = L.divIcon({
+          html: `<div style="width:14px;height:14px;border-radius:50%;background:#EF4444;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>`,
+          className: '', iconSize: [14, 14], iconAnchor: [7, 7],
+        })
+        L.marker(latlngs[latlngs.length - 1], { icon: endIcon }).addTo(map)
+      }
 
-      map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40] })
+      // IMPORTANTE: Timeout pro Leaflet calcular o tamanho da tela do celular antes de focar
+      setTimeout(() => {
+        map.invalidateSize()
+        if (latlngs.length > 1) {
+            map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40] })
+        } else {
+            map.setView(latlngs[0], 16)
+        }
+      }, 100)
+
+    } else {
+      map.setView([-23.5505, -46.6333], 15) // Fallback caso não tenha gravado nada
     }
 
     mapRef.current = map
@@ -97,27 +119,36 @@ export default function SummaryClient() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error('Não autenticado')
 
-      const res = await fetch('/api/activities', {
+      // CORREÇÃO: URL correta e payload formatado igual ao que o Drizzle espera
+      const res = await fetch('/api/activities/save-session', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          type: activityType,
+          activityType: activityType,
           startedAt: new Date(startTime!).toISOString(),
           completedAt: new Date().toISOString(),
           durationSeconds: Math.floor(totalMs / 1000),
-          distanceKm: distanceKm.toFixed(4),
-          avgPaceSecPerKm: Math.floor(avgPaceSec),
-          avgSpeedKmH: avgSpeedKmH.toFixed(2),
-          coordinates: coordinates.map((c) => ({ lat: c.lat, lng: c.lng, ts: c.timestamp })),
+          totalDistanceKm: distanceKm.toFixed(4),
+          averagePace: formatPace(avgPaceSec),
+          pathCoordinates: coordinates.map((c) => ({ lat: c.lat, lng: c.lng, ts: c.timestamp })),
+          // A imagem só vai ser enviada na próxima tela (Share)
         }),
       })
 
-      if (!res.ok) throw new Error('Falha ao salvar atividade')
+      if (!res.ok) {
+        const errData = await res.json()
+        throw new Error(errData.error || 'Falha ao salvar atividade')
+      }
+      
       const data = await res.json()
-      store.setLastSavedActivityId(data.id)
+      
+      // Guarda o ID que o banco gerou no Zustand para a tela de Share poder atualizar a foto
+      if (data.id) {
+         store.setLastSavedActivityId(data.id)
+      }
 
       router.replace('/activity/share')
     } catch (err: any) {
@@ -161,8 +192,10 @@ export default function SummaryClient() {
       </div>
 
       {/* Map */}
-      <div className="mx-5 rounded-3xl overflow-hidden" style={{ height: 220 }}>
-        <div ref={mapContainerRef} className="w-full h-full" />
+      <div className="mx-5 rounded-3xl overflow-hidden relative" style={{ height: 220 }}>
+        {/* Placeholder escuro para evitar flicker antes do mapa aparecer */}
+        <div className="absolute inset-0 bg-[#111]" />
+        <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
       </div>
 
       {/* Stats grid */}
@@ -187,7 +220,7 @@ export default function SummaryClient() {
 
       {error && (
         <div className="mx-5 mt-4 px-4 py-3 rounded-xl bg-red-900/30 border border-red-500/30">
-          <p className="text-red-400 text-sm">{error}</p>
+          <p className="text-red-400 text-sm font-bold text-center">{error}</p>
         </div>
       )}
 
