@@ -14,7 +14,7 @@ const connection =
     max: 10,
     idle_timeout: 20,
     connect_timeout: 10,
-    prepare: false, // <-- MUITO IMPORTANTE AO USAR PORTA 6543 / POOLER
+    prepare: false, 
   })
 
 if (process.env.NODE_ENV !== 'production') {

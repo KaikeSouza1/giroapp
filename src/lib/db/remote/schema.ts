@@ -2,15 +2,14 @@ import { pgTable, uuid, text, varchar, timestamp,
          boolean, numeric, integer, pgEnum, jsonb } from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
 
-// ─── ENUMS ───────────────────────────────────────────────────────────────────
+// ─── ENUMS (Tipos Traduzidos para Português) ─────────────────────────────────
 
-export const routeStatusEnum = pgEnum('route_status', ['draft', 'published', 'archived'])
-export const checkinStatusEnum = pgEnum('checkin_status', ['pending', 'approved', 'rejected'])
-export const difficultyEnum = pgEnum('difficulty', ['easy', 'medium', 'hard', 'extreme'])
-
-// NOVOS ENUMS PARA SAAS:
-export const userRoleEnum = pgEnum('user_role', ['superadmin', 'org_admin', 'user'])
-export const routeTypeEnum = pgEnum('route_type', ['caminhada', 'cicloturismo', '4x4', 'moto', 'outros'])
+export const routeStatusEnum = pgEnum('route_status', ['rascunho', 'publicado', 'arquivado'])
+export const checkinStatusEnum = pgEnum('checkin_status', ['pendente', 'aprovado', 'rejeitado'])
+export const difficultyEnum = pgEnum('difficulty', ['facil', 'medio', 'dificil', 'extremo'])
+export const userRoleEnum = pgEnum('user_role', ['superadmin', 'admin_org', 'usuario'])
+export const routeTypeEnum = pgEnum('route_type', ['caminhada', 'corrida', 'cicloturismo', '4x4', 'moto', 'outros']) // Adicionado corrida
+export const sessionStatusEnum = pgEnum('session_status', ['em_andamento', 'pausado', 'concluido', 'cancelado'])
 
 // ─── ORGANIZAÇÕES (SaaS) ──────────────────────────────────────────────────────
 
@@ -43,8 +42,8 @@ export const users = pgTable('users', {
   isActive: boolean('is_active').default(true),
   isAdmin: boolean('is_admin').default(false),
 
-  // NOVOS CAMPOS SAAS:
-  role: userRoleEnum('role').default('user').notNull(),
+  // Campos SaaS
+  role: userRoleEnum('role').default('usuario').notNull(),
   organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'set null' }),
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -68,8 +67,8 @@ export const routes = pgTable('routes', {
   slug: varchar('slug', { length: 200 }).notNull().unique(),
   description: text('description'),
   coverImageUrl: text('cover_image_url'),
-  difficulty: difficultyEnum('difficulty').default('medium'),
-  status: routeStatusEnum('status').default('draft'),
+  difficulty: difficultyEnum('difficulty').default('medio'),
+  status: routeStatusEnum('status').default('rascunho'),
   distanceKm: numeric('distance_km', { precision: 8, scale: 2 }),
   estimatedMinutes: integer('estimated_minutes'),
 
@@ -79,7 +78,7 @@ export const routes = pgTable('routes', {
 
   createdByAdminId: uuid('created_by_admin_id').references(() => users.id),
 
-  // NOVOS CAMPOS SAAS:
+  // Campos SaaS
   organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'cascade' }),
   type: routeTypeEnum('type').default('caminhada').notNull(),
 
@@ -103,46 +102,57 @@ export const waypoints = pgTable('waypoints', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
-// ─── REGISTRO DE PASSAGEM (Check-in) ─────────────────────────────────────────
+// ─── REGISTRO DE PASSAGEM (Check-in de Waypoints) ────────────────────────────
 
 export const checkins = pgTable('checkins', {
   id: uuid('id').primaryKey().defaultRandom(),
-
-  // Chaves de origem — permite rastrear de qual dispositivo/sessão veio
-  localId: uuid('local_id').notNull().unique(),   // ID gerado offline no SQLite
+  localId: uuid('local_id').notNull().unique(),   
   userId: uuid('user_id').notNull().references(() => users.id),
   waypointId: uuid('waypoint_id').notNull().references(() => waypoints.id),
-  routeSessionId: uuid('route_session_id').notNull(),  // agrupa check-ins de uma trilha
+  routeSessionId: uuid('route_session_id').notNull(), 
 
-  // Localização no momento do check-in
   capturedLatitude: numeric('captured_latitude', { precision: 10, scale: 7 }).notNull(),
   capturedLongitude: numeric('captured_longitude', { precision: 10, scale: 7 }).notNull(),
   distanceFromWaypointMeters: numeric('distance_from_waypoint_meters', { precision: 8, scale: 2 }),
 
-  // Anti-fraude biométrico
   selfieImagePath: text('selfie_image_path').notNull(),
-  biometricScore: numeric('biometric_score', { precision: 5, scale: 4 }),  // 0.0000 ~ 1.0000
-  biometricStatus: checkinStatusEnum('biometric_status').default('pending'),
+  biometricScore: numeric('biometric_score', { precision: 5, scale: 4 }), 
+  biometricStatus: checkinStatusEnum('biometric_status').default('pendente'),
   biometricValidatedAt: timestamp('biometric_validated_at'),
 
-  // Timestamps duplos: quando aconteceu offline vs quando chegou ao servidor
-  capturedAtOffline: timestamp('captured_at_offline').notNull(),  // hora real do evento
-  syncedAt: timestamp('synced_at').defaultNow(),                  // hora que chegou ao servidor
+  capturedAtOffline: timestamp('captured_at_offline').notNull(),  
+  syncedAt: timestamp('synced_at').defaultNow(),                  
 
-  metadata: jsonb('metadata'),   // dados extras (modelo do device, versão do app, etc.)
+  metadata: jsonb('metadata'),   
 })
 
-// ─── SESSÕES DE ROTA (agrupador de check-ins) ────────────────────────────────
+// ─── SESSÕES DE ATIVIDADE (O "STRAVA" TRACKER) ───────────────────────────────
 
 export const routeSessions = pgTable('route_sessions', {
   id: uuid('id').primaryKey().defaultRandom(),
   localId: uuid('local_id').notNull().unique(),
   userId: uuid('user_id').notNull().references(() => users.id),
-  routeId: uuid('route_id').notNull().references(() => routes.id),
-  status: varchar('status', { length: 20 }).default('in_progress'), // in_progress | completed | abandoned
+  
+  // Opcional: O usuário pode fazer um "Treino Livre" sem seguir uma rota do app
+  routeId: uuid('route_id').references(() => routes.id), 
+  activityType: routeTypeEnum('activity_type').default('caminhada'),
+  
+  status: sessionStatusEnum('status').default('em_andamento'),
+  
   startedAt: timestamp('started_at').notNull(),
   completedAt: timestamp('completed_at'),
+  
+  // --- MÉTRICAS REAIS DO TRACKING ---
   totalDistanceKm: numeric('total_distance_km', { precision: 8, scale: 2 }),
+  durationSeconds: integer('duration_seconds'), // Tempo real de movimento (exclui auto-pause)
+  averagePace: varchar('average_pace', { length: 15 }), // ex: "05:30/km"
+  
+  // --- O OURO: DADOS DO MAPA E COMPARTILHAMENTO ---
+  // Guarda um array gigante com o histórico de GPS: [{lat, lng, timestamp, speed}]
+  pathCoordinates: jsonb('path_coordinates'), 
+  
+  // A URL da imagem irada gerada no final com os dados + mapa para o Instagram
+  socialImageUrl: text('social_image_url'),
 })
 
 // ─── INSÍGNIAS (Badges) ───────────────────────────────────────────────────────
@@ -153,7 +163,7 @@ export const badges = pgTable('badges', {
   name: varchar('name', { length: 100 }).notNull(),
   description: text('description'),
   imageUrl: text('image_url').notNull(),
-  type: varchar('type', { length: 30 }).default('route_completion'), // route_completion | milestone | special
+  type: varchar('type', { length: 30 }).default('conclusao_rota'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
