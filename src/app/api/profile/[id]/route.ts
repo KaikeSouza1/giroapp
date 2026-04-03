@@ -37,7 +37,8 @@ export async function GET(
         id: routeSessions.id, routeName: routes.name, completedAt: routeSessions.completedAt, distanceKm: routeSessions.totalDistanceKm
       })
       .from(routeSessions).innerJoin(routes, eq(routeSessions.routeId, routes.id))
-      .where(and(eq(routeSessions.userId, targetUser.id), eq(routeSessions.status, 'completed')))
+      // CORRIGIDO AQUI: 'completed' para 'concluido'
+      .where(and(eq(routeSessions.userId, targetUser.id), eq(routeSessions.status, 'concluido')))
 
     const badgesRes = await db.select({
         id: badges.id, name: badges.name, description: badges.description, imageUrl: badges.imageUrl, awardedAt: userBadges.awardedAt
