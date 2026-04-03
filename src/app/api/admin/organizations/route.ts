@@ -74,7 +74,7 @@ export async function POST(req: Request) {
       email: adminEmail,
       username: `${slug}-admin-${Date.now().toString().slice(-4)}`, // Username único
       displayName: `Admin ${name}`,
-      role: 'org_admin',
+      role: 'admin_org', // CORRIGIDO AQUI
       organizationId: newOrg.id
     })
 
