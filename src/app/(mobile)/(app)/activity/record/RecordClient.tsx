@@ -23,10 +23,15 @@ export default function RecordClient() {
   // ── Local UI state ────────────────────────────────────────────────────────
   const [elapsedMs, setElapsedMs] = useState(0)
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null)
-  const [longPressProgress, setLongPressProgress] = useState(0)
-  const [isLongPressing, setIsLongPressing] = useState(false)
+  
+  // NOVA LÓGICA: Estado para forçar o mapa a ir pro seu local antes de gravar
+  const [currentLoc, setCurrentLoc] = useState<{lat: number, lng: number} | null>(null)
+
   const [mapReady, setMapReady] = useState(false)
   const [autoPauseWarning, setAutoPauseWarning] = useState(false)
+  
+  // NOVA LÓGICA: Modal de confirmação para encerrar
+  const [showStopModal, setShowStopModal] = useState(false)
 
   // ── Refs ──────────────────────────────────────────────────────────────────
   const mapContainerRef = useRef<HTMLDivElement>(null)
@@ -35,8 +40,6 @@ export default function RecordClient() {
   const markerRef = useRef<any>(null)
   const watchIdRef = useRef<string | null>(null)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
-  const longPressRafRef = useRef<number>(0)
-  const longPressStartRef = useRef<number>(0)
   const lowSpeedCountRef = useRef(0)
   const autoPauseRef = useRef(false)
 
@@ -68,7 +71,7 @@ export default function RecordClient() {
       await import('leaflet/dist/leaflet.css')
 
       const map = L.map(mapContainerRef.current!, {
-        center: [-23.5505, -46.6333],
+        center: [-23.5505, -46.6333], // Fallback inicial (Vai sumir rápido)
         zoom: 16,
         zoomControl: false,
         attributionControl: false,
@@ -113,18 +116,29 @@ export default function RecordClient() {
     initMap()
   }, [])
 
-  // ── Update map imperatively when coordinates change ───────────────────────
+  // ── Atualização do Mapa (Marcador e Câmera) ───────────────────────────────
   useEffect(() => {
-    if (!mapRef.current || !polylineRef.current || !markerRef.current) return
-    if (coordinates.length === 0) return
+    if (!mapRef.current || !markerRef.current || !polylineRef.current) return
 
-    const latlngs = coordinates.map((c) => [c.lat, c.lng] as [number, number])
-    polylineRef.current.setLatLngs(latlngs)
+    // 1. Sempre move o bonequinho para a posição exata em tempo real
+    if (currentLoc) {
+      markerRef.current.setLatLng([currentLoc.lat, currentLoc.lng])
+    }
 
-    const last = coordinates[coordinates.length - 1]
-    markerRef.current.setLatLng([last.lat, last.lng])
-    mapRef.current.panTo([last.lat, last.lng], { animate: true, duration: 0.5 })
-  }, [coordinates.length]) // Only re-run when coordinates array length changes
+    // 2. Se a atividade já tem linha desenhada, atualiza a linha
+    if (coordinates.length > 0) {
+      const latlngs = coordinates.map((c) => [c.lat, c.lng] as [number, number])
+      polylineRef.current.setLatLngs(latlngs)
+      
+      // Foca a câmera no último ponto gravado
+      const last = coordinates[coordinates.length - 1]
+      mapRef.current.panTo([last.lat, last.lng], { animate: true, duration: 0.5 })
+    } 
+    // 3. Se ainda não gravou nada (Aguardando GPS), foca a câmera onde o usuário está de verdade
+    else if (currentLoc) {
+      mapRef.current.panTo([currentLoc.lat, currentLoc.lng], { animate: true, duration: 0.5 })
+    }
+  }, [coordinates.length, currentLoc])
 
   // ── GPS watch ─────────────────────────────────────────────────────────────
   const startGpsWatch = useCallback(async () => {
@@ -142,20 +156,23 @@ export default function RecordClient() {
           const lat = pos.coords.latitude
           const lng = pos.coords.longitude
 
-          // 🛡️ ANTI-BUG: Ignora a "Ilha Nula" (0,0)
+          // 🛡️ Ignora coordenadas zeradas ou no oceano
           if (lat === 0 && lng === 0) return
+
+          // Atualiza o estado da tela em tempo real para o mapa buscar sua casa
+          setCurrentLoc({ lat, lng })
 
           const currentState = useActivityStore.getState()
 
-          // 🛡️ LÓGICA DE ESPERA: Se estiver idle, espera a precisão chegar em 20m ou menos
+          // 🛡️ Aguarda a precisão bater 20m para iniciar a gravação
           if (currentState.status === 'idle') {
             if (accuracy <= REQUIRED_ACCURACY_METERS) {
               currentState.startActivity()
             }
-            return // Não faz mais nada até iniciar de verdade
+            return
           }
 
-          // Só grava e calcula auto-pause se a atividade estiver rodando
+          // Se estiver rodando, adiciona no histórico do Strava e checa Auto-Pause
           if (currentState.status === 'running') {
             const coord: Coordinate = {
               lat,
@@ -176,14 +193,12 @@ export default function RecordClient() {
               }
             } else {
               lowSpeedCountRef.current = 0
-              // Auto-resume
               if (autoPauseRef.current) {
                 autoPauseRef.current = false
                 useActivityStore.getState().resumeActivity()
               }
             }
 
-            // Só adiciona a coordenada no mapa/store se estiver rodando
             useActivityStore.getState().addCoordinate(coord)
           }
         }
@@ -204,7 +219,7 @@ export default function RecordClient() {
     }
   }, [])
 
-  // 🛡️ INICIA O SENSOR DE GPS ASSIM QUE A TELA ABRE (Mesmo sem ter começado a gravar)
+  // Inicia o sensor na abertura da tela
   useEffect(() => {
     startGpsWatch()
     return () => {
@@ -212,34 +227,9 @@ export default function RecordClient() {
     }
   }, [startGpsWatch, stopGpsWatch])
 
-  // ── Long press stop ───────────────────────────────────────────────────────
-  function onStopPressStart() {
-    if (status === 'idle') return // Impede de parar o que não começou
-
-    setIsLongPressing(true)
-    longPressStartRef.current = Date.now()
-
-    function animate() {
-      const elapsed = Date.now() - longPressStartRef.current
-      const progress = Math.min((elapsed / 3000) * 100, 100)
-      setLongPressProgress(progress)
-      if (progress < 100) {
-        longPressRafRef.current = requestAnimationFrame(animate)
-      } else {
-        handleStop()
-      }
-    }
-    longPressRafRef.current = requestAnimationFrame(animate)
-  }
-
-  function onStopPressEnd() {
-    if (longPressRafRef.current) cancelAnimationFrame(longPressRafRef.current)
-    setIsLongPressing(false)
-    setLongPressProgress(0)
-  }
-
+  // ── Finalizar Atividade ───────────────────────────────────────────────────
   async function handleStop() {
-    onStopPressEnd()
+    setShowStopModal(false)
     await stopGpsWatch()
     store.stopActivity()
     router.replace('/activity/summary')
@@ -266,16 +256,40 @@ export default function RecordClient() {
     gpsAccuracy <= 15 ? '#22C55E' :
     gpsAccuracy <= 30 ? '#EAB308' : '#EF4444'
 
-  // SVG circle for long-press progress
-  const RADIUS = 38
-  const CIRCUMFERENCE = 2 * Math.PI * RADIUS
-  const strokeDashoffset = CIRCUMFERENCE - (longPressProgress / 100) * CIRCUMFERENCE
-
   return (
     <div
       className="min-h-screen flex flex-col font-[family-name:var(--font-dm)] select-none"
       style={{ background: '#080808' }}
     >
+      {/* ── Modal de Confirmação (Encerrar) ── */}
+      {showStopModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center px-6 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#1A1A1A] border border-white/10 rounded-3xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4">
+               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+            </div>
+            <h3 className="text-white font-black text-xl mb-2 text-center">Encerrar Atividade?</h3>
+            <p className="text-white/60 text-sm text-center mb-6 font-medium">
+              O tempo e a gravação serão finalizados para você gerar sua imagem do Instagram.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowStopModal(false)}
+                className="flex-1 py-3.5 rounded-2xl font-bold text-white/70 bg-white/5 active:scale-95 transition-transform"
+              >
+                Continuar Treino
+              </button>
+              <button
+                onClick={handleStop}
+                className="flex-1 py-3.5 rounded-2xl font-bold text-white bg-red-600 active:scale-95 transition-transform"
+              >
+                Encerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Auto-pause banner */}
       {autoPauseWarning && (
         <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-full flex items-center gap-2 shadow-xl"
@@ -360,11 +374,11 @@ export default function RecordClient() {
       <div className="flex-1 mx-5 rounded-3xl overflow-hidden relative" style={{ minHeight: 200 }}>
         <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
 
-        {/* LOADING DO GPS - Fica por cima do mapa até bater os 20 metros */}
+        {/* LOADING DO GPS - Cobre o mapa até conectar */}
         {status === 'idle' && (
           <div
-            className="absolute inset-0 flex flex-col items-center justify-center z-50 backdrop-blur-md"
-            style={{ background: 'rgba(8,8,8,0.75)' }}
+            className="absolute inset-0 flex flex-col items-center justify-center z-50 backdrop-blur-sm"
+            style={{ background: 'rgba(8,8,8,0.85)' }}
           >
             <div
               className="w-12 h-12 rounded-full animate-spin mb-4"
@@ -373,7 +387,7 @@ export default function RecordClient() {
             <p className="text-white font-black text-lg text-center px-4">Buscando sinal GPS...</p>
             <p className="text-white/60 text-xs mt-2 font-bold text-center px-6">
               Vá para uma área a céu aberto.<br/>
-              Precisão atual: <span style={{ color: accColor }}>{gpsAccuracy ? `${Math.round(gpsAccuracy)}m` : '--'}</span> (Alvo: {REQUIRED_ACCURACY_METERS}m)
+              Precisão: <span style={{ color: accColor }}>{gpsAccuracy ? `${Math.round(gpsAccuracy)}m` : '--'}</span> (Alvo: {REQUIRED_ACCURACY_METERS}m)
             </p>
           </div>
         )}
@@ -400,43 +414,18 @@ export default function RecordClient() {
       {/* ── Controls ───────────────────────────────────────────────────── */}
       <div className="px-5 pt-6 pb-12 flex items-center justify-center gap-8">
 
-        {/* Stop button with long-press ring */}
+        {/* Stop button (SIMPLES, SÓ CLICAR) */}
         <div className="relative flex items-center justify-center">
-          <svg width="100" height="100" className="absolute" style={{ transform: 'rotate(-90deg)' }}>
-            <circle cx="50" cy="50" r={RADIUS} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="4" />
-            {isLongPressing && (
-              <circle
-                cx="50"
-                cy="50"
-                r={RADIUS}
-                fill="none"
-                stroke="#EF4444"
-                strokeWidth="4"
-                strokeLinecap="round"
-                strokeDasharray={CIRCUMFERENCE}
-                strokeDashoffset={strokeDashoffset}
-                style={{ transition: 'stroke-dashoffset 0.05s linear' }}
-              />
-            )}
-          </svg>
           <button
-            onPointerDown={onStopPressStart}
-            onPointerUp={onStopPressEnd}
-            onPointerCancel={onStopPressEnd}
-            onPointerLeave={onStopPressEnd}
+            onClick={() => setShowStopModal(true)}
             disabled={status === 'idle'}
             className="w-16 h-16 rounded-full flex items-center justify-center active:scale-95 transition-transform disabled:opacity-30"
             style={{
-              background: isLongPressing
-                ? 'rgba(239,68,68,0.2)'
-                : 'rgba(255,255,255,0.07)',
-              border: '1.5px solid rgba(255,255,255,0.12)',
+              background: 'rgba(239,68,68,0.15)',
+              border: '1.5px solid rgba(239,68,68,0.4)',
             }}
           >
-            <div
-              className="w-7 h-7 rounded-md"
-              style={{ background: isLongPressing ? '#EF4444' : 'rgba(255,255,255,0.5)' }}
-            />
+            <div className="w-6 h-6 rounded-md bg-red-500" />
           </button>
         </div>
 
@@ -471,7 +460,7 @@ export default function RecordClient() {
         {/* Placeholder to balance layout */}
         <div className="w-16 h-16 flex items-center justify-center">
           <p className="text-white/20 text-[9px] text-center font-bold uppercase tracking-wider leading-tight">
-            Segure<br />para<br />parar
+            Clique<br />para<br />parar
           </p>
         </div>
       </div>
