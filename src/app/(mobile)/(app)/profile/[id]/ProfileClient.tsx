@@ -1,3 +1,4 @@
+// src/app/(mobile)/(app)/profile/[id]/ProfileClient.tsx
 'use client'
 
 import { useEffect, useState, use } from 'react'
@@ -67,19 +68,29 @@ export default function ProfileClient({ params }: { params: Promise<{ id: string
     load()
   }, [resolvedParams.id, router, supabase.auth])
 
-  // 👇 LÓGICA DE SEGUIR BLINDADA CONTRA NÚMEROS NEGATIVOS
+  // 🛡️ LÓGICA DE SEGUIR TOTALMENTE BLINDADA
   async function handleToggleFollow() {
     if (!profile || isFollowLoading) return
     setIsFollowLoading(true)
 
     try {
       const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error("Sem sessão ativa")
+
       const res = await fetch(`/api/profile/${profile.id}/follow`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${session?.access_token}` }
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}` 
+        }
       })
       
       const data = await res.json()
+
+      // 🔥 AQUI ESTAVA O SEU BUG: Agora só atualiza a tela SE A API DEU SUCESSO!
+      if (!res.ok) {
+        throw new Error(data.error || "Falha na comunicação com o servidor.")
+      }
       
       setProfile((prev: PublicProfileData | null) => {
         if (!prev) return null;
@@ -100,6 +111,7 @@ export default function ProfileClient({ params }: { params: Promise<{ id: string
       })
     } catch (err) {
       console.error("Erro ao seguir:", err)
+      alert("Não foi possível seguir agora. Verifique a conexão.") // Aviso caso caia a internet
     } finally {
       setIsFollowLoading(false)
     }
@@ -147,8 +159,8 @@ export default function ProfileClient({ params }: { params: Promise<{ id: string
                 disabled={isFollowLoading}
                 className={`px-5 py-2 rounded-xl text-xs font-black shadow-md transition-all active:scale-95 flex items-center gap-1 ${
                     profile.isFollowing 
-                    ? 'bg-transparent text-white border border-white/30 backdrop-blur-md' // Botão "Seguindo" (Para deixar de seguir)
-                    : 'bg-white text-[#E05300] border border-transparent' // Botão "+ Seguir"
+                    ? 'bg-transparent text-white border border-white/30 backdrop-blur-md' 
+                    : 'bg-white text-[#E05300] border border-transparent' 
                 }`}
             >
                 {isFollowLoading ? (
@@ -175,12 +187,13 @@ export default function ProfileClient({ params }: { params: Promise<{ id: string
           </div>
           
           <Link href={`/profile/${profile.id}/network?tab=followers`} className="flex-1 text-center rounded-2xl py-2.5 bg-white/15 backdrop-blur-sm active:scale-95 transition-transform block">
-            <p className="text-white font-black text-lg leading-none">{profile.followersCount}</p>
+            {/* O MÁXIMO (0) garante que mesmo se o banco tiver zoado, na tela não aparece negativo */}
+            <p className="text-white font-black text-lg leading-none">{Math.max(0, profile.followersCount)}</p>
             <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider truncate">Seguidores</p>
           </Link>
 
           <Link href={`/profile/${profile.id}/network?tab=following`} className="flex-1 text-center rounded-2xl py-2.5 bg-white/15 backdrop-blur-sm active:scale-95 transition-transform block">
-            <p className="text-white font-black text-lg leading-none">{profile.followingCount}</p>
+            <p className="text-white font-black text-lg leading-none">{Math.max(0, profile.followingCount)}</p>
             <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider truncate">A seguir</p>
           </Link>
         </div>
