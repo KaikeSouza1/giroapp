@@ -1,14 +1,16 @@
 // src/app/(mobile)/(app)/profile/page.tsx
+// CORREÇÃO: Os links de "Seguidores" e "A Seguir" agora só são renderizados
+// quando profile?.id está disponível, evitando URLs com "undefined".
 'use client'
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import NextImage from 'next/image'
-import Link from 'next/link' // 👈 IMPORTAÇÃO ADICIONADA
+import Link from 'next/link'
 import { createBrowserClient } from '@supabase/ssr'
 import TabBar from '@/components/mobile/TabBar'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
-import { uploadImageToBucket } from '@/lib/supabase/storage' 
+import { uploadImageToBucket } from '@/lib/supabase/storage'
 
 function dataUrlToFile(dataUrl: string, filename: string): File {
   const arr = dataUrl.split(',')
@@ -16,11 +18,9 @@ function dataUrlToFile(dataUrl: string, filename: string): File {
   const bstr = atob(arr[1])
   let n = bstr.length
   const u8arr = new Uint8Array(n)
-  
   while (n--) {
     u8arr[n] = bstr.charCodeAt(n)
   }
-  
   return new File([u8arr], filename, { type: mime })
 }
 
@@ -83,7 +83,7 @@ export default function ProfilePage() {
         const data = text ? JSON.parse(text) : null
         setProfile(data)
       } catch (err) {
-        console.error("Erro ao carregar perfil:", err)
+        console.error('Erro ao carregar perfil:', err)
       } finally {
         setLoading(false)
       }
@@ -107,23 +107,22 @@ export default function ProfilePage() {
   }
 
   async function takeProfilePicture(source: CameraSource) {
-    setIsAvatarModalOpen(false) 
-    
+    setIsAvatarModalOpen(false)
     try {
       const image = await Camera.getPhoto({
         quality: 85,
-        allowEditing: true, 
-        width: 800,         
-        height: 800,        
+        allowEditing: true,
+        width: 800,
+        height: 800,
         resultType: CameraResultType.DataUrl,
-        source: source      
+        source: source,
       })
 
       if (!image.dataUrl || !profile) return
       setIsUpdatingAvatar(true)
 
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error("Não autenticado")
+      if (!session) throw new Error('Não autenticado')
 
       const file = dataUrlToFile(image.dataUrl, 'profile.jpg')
       const publicUrl = await uploadImageToBucket(file, 'giro-app', `avatars/${session.user.id}`)
@@ -133,16 +132,15 @@ export default function ProfilePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           supabaseAuthId: session.user.id,
-          avatarUrl: publicUrl
-        })
+          avatarUrl: publicUrl,
+        }),
       })
 
-      if (!dbRes.ok) throw new Error("Erro ao salvar no banco de dados.")
-      setProfile(prev => prev ? { ...prev, avatarUrl: publicUrl } : null)
-
+      if (!dbRes.ok) throw new Error('Erro ao salvar no banco de dados.')
+      setProfile((prev) => prev ? { ...prev, avatarUrl: publicUrl } : null)
     } catch (err: any) {
       if (err.message !== 'User cancelled photos app') {
-        alert("Erro ao trocar foto: " + err.message)
+        alert('Erro ao trocar foto: ' + err.message)
       }
     } finally {
       setIsUpdatingAvatar(false)
@@ -150,7 +148,7 @@ export default function ProfilePage() {
   }
 
   const getTypeInfo = (type: string) => {
-    switch(type) {
+    switch (type) {
       case 'caminhada': return { icon: '🥾', label: 'Caminhada', color: 'bg-green-100 text-green-700' }
       case 'cicloturismo': return { icon: '🚴', label: 'Ciclismo', color: 'bg-blue-100 text-blue-700' }
       case 'moto': return { icon: '🏍️', label: 'Moto', color: 'bg-purple-100 text-purple-700' }
@@ -192,7 +190,7 @@ export default function ProfilePage() {
       {/* Modal Foto de Perfil */}
       {isAvatarModalOpen && (
         <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setIsAvatarModalOpen(false)}>
-          <div className="bg-white rounded-t-3xl p-6 pb-12 flex flex-col gap-3 shadow-2xl transform transition-transform" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-t-3xl p-6 pb-12 flex flex-col gap-3 shadow-2xl transform transition-transform" onClick={(e) => e.stopPropagation()}>
             <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-4" />
             <h3 className="text-lg font-black text-gray-900 mb-2">Trocar foto de perfil</h3>
             <button onClick={() => takeProfilePicture(CameraSource.Camera)} className="w-full py-4 rounded-2xl text-white font-black text-base shadow-lg flex items-center justify-center gap-2" style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>📷 Tirar Foto Agora</button>
@@ -213,52 +211,99 @@ export default function ProfilePage() {
           <button onClick={handleLogout} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-transform active:scale-95" style={{ background: 'rgba(255,255,255,0.2)', color: 'white' }}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Sair</button>
         </div>
         <div className="relative z-10 flex items-center gap-4">
-          <button onClick={() => setIsAvatarModalOpen(true)} disabled={isUpdatingAvatar} className="relative rounded-2xl shadow-lg transition-transform active:scale-95 disabled:opacity-70 group">{isUpdatingAvatar && (<div className="absolute inset-0 bg-black/50 rounded-2xl flex items-center justify-center z-20"><div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" /></div>)}<div className="absolute -bottom-2 -right-2 bg-white rounded-full p-1.5 shadow-md z-10 text-orange-600"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>
+          <button onClick={() => setIsAvatarModalOpen(true)} disabled={isUpdatingAvatar} className="relative rounded-2xl shadow-lg transition-transform active:scale-95 disabled:opacity-70 group">
+            {isUpdatingAvatar && (
+              <div className="absolute inset-0 bg-black/50 rounded-2xl flex items-center justify-center z-20">
+                <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              </div>
+            )}
+            <div className="absolute -bottom-2 -right-2 bg-white rounded-full p-1.5 shadow-md z-10 text-orange-600">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </div>
             {profile?.avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={profile.avatarUrl} alt="Avatar" className="w-16 h-16 rounded-2xl object-cover" style={{ border: '2px solid rgba(255,255,255,0.4)' }} />
             ) : (
-              <div className="w-16 h-16 rounded-2xl flex items-center justify-center font-black text-2xl text-white" style={{ background: 'rgba(255,255,255,0.25)', border: '2px solid rgba(255,255,255,0.4)' }}>{profile?.displayName?.charAt(0).toUpperCase() ?? 'U'}</div>
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center font-black text-2xl text-white" style={{ background: 'rgba(255,255,255,0.25)', border: '2px solid rgba(255,255,255,0.4)' }}>
+                {profile?.displayName?.charAt(0).toUpperCase() ?? 'U'}
+              </div>
             )}
           </button>
-          <div><h1 className="text-white font-black text-xl leading-tight">{profile?.displayName ?? 'Aventureiro'}</h1><p className="text-white/60 text-sm font-medium mt-0.5">@{profile?.username ?? ''}</p></div>
+          <div>
+            <h1 className="text-white font-black text-xl leading-tight">{profile?.displayName ?? 'Aventureiro'}</h1>
+            <p className="text-white/60 text-sm font-medium mt-0.5">@{profile?.username ?? ''}</p>
+          </div>
         </div>
-        
-        {/* 👇 AQUI ESTÃO OS LINKS CLICÁVEIS CORRIGIDOS */}
+
+        {/* ESTATÍSTICAS — Links de rede só são renderizados quando profile?.id está disponível */}
         <div className="relative z-10 flex gap-3 mt-6">
           <div className="flex-1 text-center rounded-2xl py-2.5 backdrop-blur-sm" style={{ background: 'rgba(255,255,255,0.15)' }}>
             <p className="text-white font-black text-lg leading-none">{profile?.completedRoutes?.length ?? 0}</p>
             <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider">Rotas</p>
           </div>
-          
+
           <div className="flex-1 text-center rounded-2xl py-2.5 backdrop-blur-sm" style={{ background: 'rgba(255,255,255,0.15)' }}>
             <p className="text-white font-black text-lg leading-none">{profile?.badges?.length ?? 0}</p>
             <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider">Insígnias</p>
           </div>
-          
-          <Link href={`/profile/${profile?.id}/network?tab=followers`} className="flex-1 text-center rounded-2xl py-2.5 backdrop-blur-sm active:scale-95 transition-transform block" style={{ background: 'rgba(255,255,255,0.15)' }}>
-            <p className="text-white font-black text-lg leading-none">{profile?.followersCount ?? 0}</p>
-            <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider">Seguidores</p>
-          </Link>
-          
-          <Link href={`/profile/${profile?.id}/network?tab=following`} className="flex-1 text-center rounded-2xl py-2.5 backdrop-blur-sm active:scale-95 transition-transform block" style={{ background: 'rgba(255,255,255,0.15)' }}>
-            <p className="text-white font-black text-lg leading-none">{profile?.followingCount ?? 0}</p>
-            <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider">A seguir</p>
-          </Link>
+
+          {/* CORREÇÃO: Só cria o Link quando profile?.id é uma string válida */}
+          {profile?.id ? (
+            <Link
+              href={`/profile/${profile.id}/network?tab=followers`}
+              className="flex-1 text-center rounded-2xl py-2.5 backdrop-blur-sm active:scale-95 transition-transform block"
+              style={{ background: 'rgba(255,255,255,0.15)' }}
+            >
+              <p className="text-white font-black text-lg leading-none">{profile.followersCount ?? 0}</p>
+              <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider">Seguidores</p>
+            </Link>
+          ) : (
+            <div className="flex-1 text-center rounded-2xl py-2.5 backdrop-blur-sm" style={{ background: 'rgba(255,255,255,0.15)' }}>
+              <p className="text-white font-black text-lg leading-none">0</p>
+              <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider">Seguidores</p>
+            </div>
+          )}
+
+          {profile?.id ? (
+            <Link
+              href={`/profile/${profile.id}/network?tab=following`}
+              className="flex-1 text-center rounded-2xl py-2.5 backdrop-blur-sm active:scale-95 transition-transform block"
+              style={{ background: 'rgba(255,255,255,0.15)' }}
+            >
+              <p className="text-white font-black text-lg leading-none">{profile.followingCount ?? 0}</p>
+              <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider">A seguir</p>
+            </Link>
+          ) : (
+            <div className="flex-1 text-center rounded-2xl py-2.5 backdrop-blur-sm" style={{ background: 'rgba(255,255,255,0.15)' }}>
+              <p className="text-white font-black text-lg leading-none">0</p>
+              <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider">A seguir</p>
+            </div>
+          )}
         </div>
-        
+
         <div className="absolute bottom-0 left-0 right-0 h-6 bg-gray-50 rounded-t-3xl" />
       </div>
 
       {/* Tabs */}
       <div className="flex mx-5 mt-2 rounded-2xl overflow-hidden border border-gray-100 bg-white mb-4 shadow-sm">
-        {(['routes', 'badges'] as const).map(tab => (
-          <button key={tab} onClick={() => setActiveTab(tab)} className="flex-1 py-3 text-sm font-bold transition-all" style={{ color: activeTab === tab ? 'white' : '#999', background: activeTab === tab ? 'linear-gradient(135deg, #830200, #E05300)' : 'transparent', }}>{tab === 'routes' ? `🗺️ Histórico (${profile?.completedRoutes?.length ?? 0})` : `🏆 Insígnias (${profile?.badges?.length ?? 0})`}</button>
+        {(['routes', 'badges'] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className="flex-1 py-3 text-sm font-bold transition-all"
+            style={{
+              color: activeTab === tab ? 'white' : '#999',
+              background: activeTab === tab ? 'linear-gradient(135deg, #830200, #E05300)' : 'transparent',
+            }}
+          >
+            {tab === 'routes'
+              ? `🗺️ Histórico (${profile?.completedRoutes?.length ?? 0})`
+              : `🏆 Insígnias (${profile?.badges?.length ?? 0})`}
+          </button>
         ))}
       </div>
 
       <div className="px-5">
-        
         {/* Aba de Rotas Concluídas */}
         {activeTab === 'routes' && (
           profile?.completedRoutes?.length === 0 ? (
@@ -268,53 +313,51 @@ export default function ProfilePage() {
             </div>
           ) : (
             <div className="flex flex-col gap-5">
-              {profile?.completedRoutes?.map(route => {
+              {profile?.completedRoutes?.map((route) => {
                 const info = getTypeInfo(route.routeType)
-                
                 return (
-                <div key={route.id} className="bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-100">
-                  <div className="px-5 pt-4 pb-3 flex justify-between items-start border-b border-gray-50">
-                    <div>
-                      <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md mb-1.5 ${info.color}`}>
-                        <span className="text-[10px] leading-none">{info.icon}</span><span className="text-[9px] font-bold uppercase tracking-wider">{info.label}</span>
+                  <div key={route.id} className="bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-100">
+                    <div className="px-5 pt-4 pb-3 flex justify-between items-start border-b border-gray-50">
+                      <div>
+                        <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md mb-1.5 ${info.color}`}>
+                          <span className="text-[10px] leading-none">{info.icon}</span>
+                          <span className="text-[9px] font-bold uppercase tracking-wider">{info.label}</span>
+                        </div>
+                        <h3 className="font-black text-gray-900 text-lg leading-tight">{route.routeName}</h3>
+                        <p className="text-gray-400 text-xs mt-1 font-medium">{new Date(route.completedAt).toLocaleDateString('pt-BR')}</p>
                       </div>
-                      <h3 className="font-black text-gray-900 text-lg leading-tight">{route.routeName}</h3>
-                      <p className="text-gray-400 text-xs mt-1 font-medium">{new Date(route.completedAt).toLocaleDateString('pt-BR')}</p>
+                      <div className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center text-green-500">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                      </div>
                     </div>
-                    <div className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center text-green-500"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
-                  </div>
-                  <div className="grid grid-cols-2 divide-x divide-gray-50 border-b border-gray-50 bg-gray-50/30">
-                     <div className="py-3 text-center"><p className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-0.5">Tempo Total</p><p className="font-black text-gray-800 text-base">{route.elapsedMinutes > 0 ? formatTime(route.elapsedMinutes) : '--'}</p></div>
-                     <div className="py-3 text-center"><p className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-0.5">Distância</p><p className="font-black text-gray-800 text-base">{route.distanceKm ? `${route.distanceKm} km` : '--'}</p></div>
-                  </div>
-
-                  {/* Galeria de Fotos */}
-                  <div className="px-5 py-4">
-                     <p className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-2">Check-ins Capturados (Toque para ampliar)</p>
-                     
-                     {route.photos && route.photos.length > 0 ? (
-                       <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-                         {route.photos.map((photo, index) => (
-                           <button 
-                             key={index} 
-                             className="relative w-20 h-20 flex-shrink-0 cursor-pointer active:scale-95 transition-transform"
-                             onClick={() => openPhotoViewer(photo)}
-                           >
+                    <div className="grid grid-cols-2 divide-x divide-gray-50 border-b border-gray-50 bg-gray-50/30">
+                      <div className="py-3 text-center"><p className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-0.5">Tempo Total</p><p className="font-black text-gray-800 text-base">{route.elapsedMinutes > 0 ? formatTime(route.elapsedMinutes) : '--'}</p></div>
+                      <div className="py-3 text-center"><p className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-0.5">Distância</p><p className="font-black text-gray-800 text-base">{route.distanceKm ? `${route.distanceKm} km` : '--'}</p></div>
+                    </div>
+                    <div className="px-5 py-4">
+                      <p className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-2">Check-ins Capturados (Toque para ampliar)</p>
+                      {route.photos && route.photos.length > 0 ? (
+                        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                          {route.photos.map((photo, index) => (
+                            <button
+                              key={index}
+                              className="relative w-20 h-20 flex-shrink-0 cursor-pointer active:scale-95 transition-transform"
+                              onClick={() => openPhotoViewer(photo)}
+                            >
                               {/* eslint-disable-next-line @next/next/no-img-element */}
-                             <img src={photo} alt="Local da rota" className="w-full h-full rounded-2xl object-cover border-2 border-white shadow-md" />
-                             
-                             <div className="absolute inset-0 bg-black/20 rounded-2xl flex items-center justify-center text-white opacity-0 hover:opacity-100 transition-opacity">
-                               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-                             </div>
-                           </button>
-                         ))}
-                       </div>
-                     ) : (
-                       <div className="w-full py-4 rounded-xl border border-dashed border-gray-200 flex items-center justify-center bg-gray-50"><p className="text-xs text-gray-400 font-medium">Nenhuma foto registrada</p></div>
-                     )}
+                              <img src={photo} alt="Local da rota" className="w-full h-full rounded-2xl object-cover border-2 border-white shadow-md" />
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="w-full py-4 rounded-xl border border-dashed border-gray-200 flex items-center justify-center bg-gray-50">
+                          <p className="text-xs text-gray-400 font-medium">Nenhuma foto registrada</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )})}
+                )
+              })}
             </div>
           )
         )}
@@ -328,7 +371,7 @@ export default function ProfilePage() {
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-3">
-              {profile?.badges?.map(badge => (
+              {profile?.badges?.map((badge) => (
                 <div key={badge.id} className="bg-white rounded-2xl p-3 text-center shadow-sm" style={{ border: '1.5px solid #F5F5F5' }}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={badge.imageUrl} alt={badge.name} className="w-12 h-12 rounded-xl mx-auto mb-2 object-cover" />
