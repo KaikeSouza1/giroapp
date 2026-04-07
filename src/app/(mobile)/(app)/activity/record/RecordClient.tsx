@@ -11,10 +11,7 @@ import {
   Coordinate,
 } from '@/store/activityStore'
 
-// ── Auto-pause threshold ──────────────────────────────────────────────────────
-const AUTO_PAUSE_SPEED_KMH = 0.4
-const AUTO_PAUSE_CONSECUTIVE = 4 // N coordinates without movement
-const REQUIRED_ACCURACY_METERS = 20 // Precisão mínima para iniciar a atividade
+const REQUIRED_ACCURACY_METERS = 20 
 
 export default function RecordClient() {
   const router = useRouter()
@@ -23,15 +20,13 @@ export default function RecordClient() {
   // ── Local UI state ────────────────────────────────────────────────────────
   const [elapsedMs, setElapsedMs] = useState(0)
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null)
-  
-  // NOVA LÓGICA: Estado para forçar o mapa a ir pro seu local antes de gravar
   const [currentLoc, setCurrentLoc] = useState<{lat: number, lng: number} | null>(null)
-
   const [mapReady, setMapReady] = useState(false)
   const [autoPauseWarning, setAutoPauseWarning] = useState(false)
-  
-  // NOVA LÓGICA: Modal de confirmação para encerrar
   const [showStopModal, setShowStopModal] = useState(false)
+
+  // 🚀 NOVO ESTADO: Tela de transição para evitar o "bug" congelado
+  const [isFinishing, setIsFinishing] = useState(false)
 
   // ── Refs ──────────────────────────────────────────────────────────────────
   const mapContainerRef = useRef<HTMLDivElement>(null)
@@ -40,12 +35,12 @@ export default function RecordClient() {
   const markerRef = useRef<any>(null)
   const watchIdRef = useRef<string | null>(null)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
+  
   const lowSpeedCountRef = useRef(0)
   const autoPauseRef = useRef(false)
 
   const { status, activityType, coordinates, startTime, pausedDuration, pauseStartTime } = store
 
-  // ── Redirect se não tiver atividade escolhida ─────────────────────────────
   useEffect(() => {
     if (!activityType) {
       router.replace('/activity')
@@ -71,19 +66,17 @@ export default function RecordClient() {
       await import('leaflet/dist/leaflet.css')
 
       const map = L.map(mapContainerRef.current!, {
-        center: [-23.5505, -46.6333], // Fallback inicial (Vai sumir rápido)
+        center: [-23.5505, -46.6333],
         zoom: 16,
         zoomControl: false,
         attributionControl: false,
       })
 
-      // Dark CartoDB tiles
       L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
         attribution: '&copy; OpenStreetMap &copy; CARTO',
         maxZoom: 19,
       }).addTo(map)
 
-      // Polyline (neon orange trace)
       const poly = L.polyline([], {
         color: '#FF6B35',
         weight: 4,
@@ -93,7 +86,6 @@ export default function RecordClient() {
       }).addTo(map)
       polylineRef.current = poly
 
-      // Current position marker
       const markerIcon = L.divIcon({
         html: `<div style="
           width:18px;height:18px;
@@ -120,21 +112,17 @@ export default function RecordClient() {
   useEffect(() => {
     if (!mapRef.current || !markerRef.current || !polylineRef.current) return
 
-    // 1. Sempre move o bonequinho para a posição exata em tempo real
     if (currentLoc) {
       markerRef.current.setLatLng([currentLoc.lat, currentLoc.lng])
     }
 
-    // 2. Se a atividade já tem linha desenhada, atualiza a linha
     if (coordinates.length > 0) {
       const latlngs = coordinates.map((c) => [c.lat, c.lng] as [number, number])
       polylineRef.current.setLatLngs(latlngs)
       
-      // Foca a câmera no último ponto gravado
       const last = coordinates[coordinates.length - 1]
       mapRef.current.panTo([last.lat, last.lng], { animate: true, duration: 0.5 })
     } 
-    // 3. Se ainda não gravou nada (Aguardando GPS), foca a câmera onde o usuário está de verdade
     else if (currentLoc) {
       mapRef.current.panTo([currentLoc.lat, currentLoc.lng], { animate: true, duration: 0.5 })
     }
@@ -146,7 +134,11 @@ export default function RecordClient() {
       const { Geolocation } = await import('@capacitor/geolocation')
 
       watchIdRef.current = await Geolocation.watchPosition(
-        { enableHighAccuracy: true, timeout: 30000 },
+        { 
+          enableHighAccuracy: true, 
+          timeout: 10000,
+          maximumAge: 0
+        },
         (pos, err) => {
           if (err || !pos) return
 
@@ -156,15 +148,12 @@ export default function RecordClient() {
           const lat = pos.coords.latitude
           const lng = pos.coords.longitude
 
-          // 🛡️ Ignora coordenadas zeradas ou no oceano
           if (lat === 0 && lng === 0) return
 
-          // Atualiza o estado da tela em tempo real para o mapa buscar sua casa
           setCurrentLoc({ lat, lng })
 
           const currentState = useActivityStore.getState()
 
-          // 🛡️ Aguarda a precisão bater 20m para iniciar a gravação
           if (currentState.status === 'idle') {
             if (accuracy <= REQUIRED_ACCURACY_METERS) {
               currentState.startActivity()
@@ -172,7 +161,6 @@ export default function RecordClient() {
             return
           }
 
-          // Se estiver rodando, adiciona no histórico do Strava e checa Auto-Pause
           if (currentState.status === 'running') {
             const coord: Coordinate = {
               lat,
@@ -182,16 +170,15 @@ export default function RecordClient() {
               altitude: pos.coords.altitude,
             }
 
-            // Auto-pause logic
-            if (currentState.currentSpeedKmH < AUTO_PAUSE_SPEED_KMH && accuracy < 30) {
+            if (currentState.currentSpeedKmH < 1.0 && accuracy < 30) {
               lowSpeedCountRef.current++
-              if (lowSpeedCountRef.current >= AUTO_PAUSE_CONSECUTIVE) {
+              if (lowSpeedCountRef.current >= 4) {
                 autoPauseRef.current = true
                 useActivityStore.getState().pauseActivity(true)
                 setAutoPauseWarning(true)
                 setTimeout(() => setAutoPauseWarning(false), 3000)
               }
-            } else {
+            } else if (currentState.currentSpeedKmH >= 1.0) {
               lowSpeedCountRef.current = 0
               if (autoPauseRef.current) {
                 autoPauseRef.current = false
@@ -219,7 +206,6 @@ export default function RecordClient() {
     }
   }, [])
 
-  // Inicia o sensor na abertura da tela
   useEffect(() => {
     startGpsWatch()
     return () => {
@@ -227,12 +213,19 @@ export default function RecordClient() {
     }
   }, [startGpsWatch, stopGpsWatch])
 
-  // ── Finalizar Atividade ───────────────────────────────────────────────────
-  async function handleStop() {
+  // ── Finalizar Atividade (CORRIGIDO PARA NÃO BUGAR A TELA) ───────────────
+  function handleStop() {
+    // 1. Esconde o modal de confirmação e sobe a tela de "Salvando" instantaneamente
     setShowStopModal(false)
-    await stopGpsWatch()
-    store.stopActivity()
-    router.replace('/activity/summary')
+    setIsFinishing(true)
+
+    // 2. Coloca um pequeno delay (setTimeout) para dar tempo do React renderizar a tela preta de salvamento
+    // antes de travarmos o navegador com o router.replace e o desligamento do GPS
+    setTimeout(async () => {
+      await stopGpsWatch()
+      store.stopActivity()
+      router.replace('/activity/summary')
+    }, 150)
   }
 
   function handlePauseResume() {
@@ -244,7 +237,6 @@ export default function RecordClient() {
     }
   }
 
-  // ── Computed display values ───────────────────────────────────────────────
   const meta = activityType ? ACTIVITY_META[activityType] : null
   const distDisplay = store.distanceKm.toFixed(2)
   const paceDisplay = formatPace(store.currentPaceSecPerKm)
@@ -257,13 +249,20 @@ export default function RecordClient() {
     gpsAccuracy <= 30 ? '#EAB308' : '#EF4444'
 
   return (
-    <div
-      className="min-h-screen flex flex-col font-[family-name:var(--font-dm)] select-none"
-      style={{ background: '#080808' }}
-    >
-      {/* ── Modal de Confirmação (Encerrar) ── */}
-      {showStopModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center px-6 bg-black/80 backdrop-blur-sm">
+    <div className="min-h-screen flex flex-col font-[family-name:var(--font-dm)] select-none relative" style={{ background: '#080808' }}>
+      
+      {/* 🚀 OVERLAY DE TRANSIÇÃO (SALVANDO ATIVIDADE) */}
+      {isFinishing && (
+        <div className="absolute inset-0 z-[200] flex flex-col items-center justify-center bg-[#080808]">
+          <div className="w-16 h-16 rounded-full animate-spin mb-6" style={{ border: '4px solid rgba(255,255,255,0.05)', borderTop: '4px solid #E05300' }} />
+          <h2 className="text-white font-black text-2xl animate-pulse">Salvando treino...</h2>
+          <p className="text-white/40 text-sm mt-2 font-medium">Preparando suas estatísticas</p>
+        </div>
+      )}
+
+      {/* Modal de Confirmação */}
+      {showStopModal && !isFinishing && (
+        <div className="absolute inset-0 z-[100] flex items-center justify-center px-6 bg-black/80 backdrop-blur-sm">
           <div className="bg-[#1A1A1A] border border-white/10 rounded-3xl p-6 w-full max-w-sm shadow-2xl">
             <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4">
                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
@@ -277,7 +276,7 @@ export default function RecordClient() {
                 onClick={() => setShowStopModal(false)}
                 className="flex-1 py-3.5 rounded-2xl font-bold text-white/70 bg-white/5 active:scale-95 transition-transform"
               >
-                Continuar Treino
+                Continuar
               </button>
               <button
                 onClick={handleStop}
@@ -291,8 +290,8 @@ export default function RecordClient() {
       )}
 
       {/* Auto-pause banner */}
-      {autoPauseWarning && (
-        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-full flex items-center gap-2 shadow-xl"
+      {autoPauseWarning && !isFinishing && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-full flex items-center gap-2 shadow-xl"
           style={{ background: '#1A1A1A', border: '1px solid rgba(255,255,255,0.1)' }}>
           <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
           <p className="text-white text-xs font-bold">Pausa automática ativada</p>
@@ -337,7 +336,6 @@ export default function RecordClient() {
         </div>
       </div>
 
-      {/* ── Big elapsed timer ──────────────────────────────────────────── */}
       <div className="px-5 pb-4">
         <p
           className="font-black leading-none tabular-nums"
@@ -352,7 +350,6 @@ export default function RecordClient() {
         </p>
       </div>
 
-      {/* ── Stats row ──────────────────────────────────────────────────── */}
       <div className="flex px-5 pb-4 gap-3">
         {[
           { label: 'KM', value: distDisplay, sub: 'Distância' },
@@ -374,7 +371,6 @@ export default function RecordClient() {
       <div className="flex-1 mx-5 rounded-3xl overflow-hidden relative" style={{ minHeight: 200 }}>
         <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
 
-        {/* LOADING DO GPS - Cobre o mapa até conectar */}
         {status === 'idle' && (
           <div
             className="absolute inset-0 flex flex-col items-center justify-center z-50 backdrop-blur-sm"
@@ -404,7 +400,6 @@ export default function RecordClient() {
           </div>
         )}
 
-        {/* Map overlay gradient (bottom fade) */}
         <div
           className="absolute bottom-0 left-0 right-0 h-16 pointer-events-none"
           style={{ background: 'linear-gradient(to bottom, transparent, rgba(8,8,8,0.8))' }}
@@ -413,8 +408,6 @@ export default function RecordClient() {
 
       {/* ── Controls ───────────────────────────────────────────────────── */}
       <div className="px-5 pt-6 pb-12 flex items-center justify-center gap-8">
-
-        {/* Stop button (SIMPLES, SÓ CLICAR) */}
         <div className="relative flex items-center justify-center">
           <button
             onClick={() => setShowStopModal(true)}
@@ -429,7 +422,6 @@ export default function RecordClient() {
           </button>
         </div>
 
-        {/* Pause / Resume — big central button */}
         <button
           onClick={handlePauseResume}
           disabled={status === 'idle'}
@@ -457,7 +449,6 @@ export default function RecordClient() {
           )}
         </button>
 
-        {/* Placeholder to balance layout */}
         <div className="w-16 h-16 flex items-center justify-center">
           <p className="text-white/20 text-[9px] text-center font-bold uppercase tracking-wider leading-tight">
             Clique<br />para<br />parar

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
-import { users, followers } from '@/lib/db/remote/schema'
+import { users, followers, notifications } from '@/lib/db/remote/schema'
 import { eq, and } from 'drizzle-orm'
 
 export async function POST(
@@ -20,14 +20,33 @@ export async function POST(
     const [me] = await db.select({ id: users.id }).from(users).where(eq(users.supabaseAuthId, authUser.id))
     if (!me || me.id === targetUserId) return NextResponse.json({ error: 'Ação inválida' }, { status: 400 })
 
+    // Verifica se já segue
     const [existingFollow] = await db.select().from(followers)
       .where(and(eq(followers.followerId, me.id), eq(followers.followingId, targetUserId)))
 
     if (existingFollow) {
+      // DEIXAR DE SEGUIR
       await db.delete(followers).where(eq(followers.id, existingFollow.id))
+      
+      // Remove a notificação se o usuário desistir de seguir
+      await db.delete(notifications).where(
+        and(
+          eq(notifications.userId, targetUserId),
+          eq(notifications.actorId, me.id),
+          eq(notifications.type, 'follow')
+        )
+      )
       return NextResponse.json({ isFollowing: false })
     } else {
+      // SEGUIR
       await db.insert(followers).values({ followerId: me.id, followingId: targetUserId })
+      
+      // Cria notificação para o usuário alvo
+      await db.insert(notifications).values({
+        userId: targetUserId,
+        actorId: me.id,
+        type: 'follow'
+      })
       return NextResponse.json({ isFollowing: true })
     }
   } catch (err: any) {

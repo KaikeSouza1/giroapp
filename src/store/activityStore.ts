@@ -103,28 +103,52 @@ export const useActivityStore = create<ActivityStore>()(
       })
     },
 
+    // ── MODO STRAVA: NOVA LÓGICA DE GPS DE ALTA PRECISÃO ──
     addCoordinate: (coord) => {
-      const { status, coordinates, distanceKm } = get()
+      const { status, coordinates, distanceKm, activityType } = get()
       if (status !== 'running') return
 
-      const prev = coordinates[coordinates.length - 1]
-      let addedKm = 0
+      // Se é o primeiro ponto absoluto, só adicionamos
+      if (coordinates.length === 0) {
+        set({ coordinates: [coord] })
+        return
+      }
+
+      const lastSaved = coordinates[coordinates.length - 1]
+      const distKm = haversineKm(lastSaved, coord)
+
+      // 1. FILTRO DE TREMOR (JITTER): Só grava ponto se moveu mais de 4 metros (0.004 km).
+      if (distKm < 0.004) {
+        const timeSinceLast = (coord.timestamp - lastSaved.timestamp) / 1000 // segundos
+        // Se ficou 6 segundos num raio menor que 4 metros, você está parado. Zera a velocidade.
+        if (timeSinceLast > 6) {
+          set({ currentSpeedKmH: 0, currentPaceSecPerKm: 0 })
+        }
+        // IMPORTANTE: Dá "return" vazio para ignorar este ponto e o erro acumular para o próximo!
+        return
+      }
+
+      // 2. MOVEU DE VERDADE: Calcula a velocidade e adiciona no histórico
+      const timeDiffHr = (coord.timestamp - lastSaved.timestamp) / 3_600_000
       let speedKmH = 0
       let paceSecPerKm = 0
 
-      if (prev) {
-        const dist = haversineKm(prev, coord)
-        const timeDiffHr = (coord.timestamp - prev.timestamp) / 3_600_000
-        if (dist >= 0.002 && timeDiffHr > 0) {
-          addedKm = dist
-          speedKmH = dist / timeDiffHr
-          paceSecPerKm = speedKmH > 0 ? 3600 / speedKmH : 0
-        }
+      if (timeDiffHr > 0) {
+        speedKmH = distKm / timeDiffHr
       }
 
+      // 3. FILTRO ANTI-TELEPORTE: Se a velocidade for irreal para o esporte, é sinal pulando do GPS. Ignoramos.
+      const maxSpeed = activityType === 'cicloturismo' ? 100 : 35
+      if (speedKmH > maxSpeed) {
+        return 
+      }
+
+      paceSecPerKm = speedKmH > 0 ? 3600 / speedKmH : 0
+
+      // Só agora salva a distância, pq sabemos que foi um trajeto real e válido
       set({
         coordinates: [...coordinates, coord],
-        distanceKm: distanceKm + addedKm,
+        distanceKm: distanceKm + distKm,
         currentSpeedKmH: speedKmH,
         currentPaceSecPerKm: paceSecPerKm,
       })
@@ -177,7 +201,6 @@ export function getElapsedMs(
   return Date.now() - startTime - pausedDuration - extra
 }
 
-// ─── TRADUÇÕES CORRIGIDAS ───
 export const ACTIVITY_META: Record<ActivityType, { label: string; emoji: string; icon: string }> = {
   corrida: { label: 'Corrida', emoji: '🏃', icon: '🏃' },
   cicloturismo: { label: 'Ciclismo', emoji: '🚴', icon: '🚴' },

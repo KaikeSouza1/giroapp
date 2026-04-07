@@ -8,8 +8,9 @@ export const routeStatusEnum = pgEnum('route_status', ['rascunho', 'publicado', 
 export const checkinStatusEnum = pgEnum('checkin_status', ['pendente', 'aprovado', 'rejeitado'])
 export const difficultyEnum = pgEnum('difficulty', ['facil', 'medio', 'dificil', 'extremo'])
 export const userRoleEnum = pgEnum('user_role', ['superadmin', 'admin_org', 'usuario'])
-export const routeTypeEnum = pgEnum('route_type', ['caminhada', 'corrida', 'cicloturismo', '4x4', 'moto', 'outros']) // Adicionado corrida
+export const routeTypeEnum = pgEnum('route_type', ['caminhada', 'corrida', 'cicloturismo', '4x4', 'moto', 'outros'])
 export const sessionStatusEnum = pgEnum('session_status', ['em_andamento', 'pausado', 'concluido', 'cancelado'])
+export const notificationTypeEnum = pgEnum('notification_type', ['follow']) // NOVO ENUM PARA NOTIFICAÇÕES
 
 // ─── ORGANIZAÇÕES (SaaS) ──────────────────────────────────────────────────────
 
@@ -34,7 +35,6 @@ export const users = pgTable('users', {
   bio: text('bio'),
   avatarUrl: text('avatar_url'),
 
-  // Anti-fraude: selfie de referência cadastrada no onboarding
   referenceSelfiePath: text('reference_selfie_path'),
   isSelfieCaptured: boolean('is_selfie_captured').default(false),
 
@@ -42,7 +42,6 @@ export const users = pgTable('users', {
   isActive: boolean('is_active').default(true),
   isAdmin: boolean('is_admin').default(false),
 
-  // Campos SaaS
   role: userRoleEnum('role').default('usuario').notNull(),
   organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'set null' }),
 
@@ -59,6 +58,17 @@ export const followers = pgTable('followers', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
+// ─── NOTIFICAÇÕES (NOVO) ──────────────────────────────────────────────────────
+
+export const notifications = pgTable('notifications', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }), // Quem recebe
+  actorId: uuid('actor_id').notNull().references(() => users.id, { onDelete: 'cascade' }), // Quem fez a ação
+  type: notificationTypeEnum('type').default('follow').notNull(),
+  isRead: boolean('is_read').default(false),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
 // ─── ROTAS ───────────────────────────────────────────────────────────────────
 
 export const routes = pgTable('routes', {
@@ -72,13 +82,10 @@ export const routes = pgTable('routes', {
   distanceKm: numeric('distance_km', { precision: 8, scale: 2 }),
   estimatedMinutes: integer('estimated_minutes'),
 
-  // Ponto de início da rota
   startLatitude: numeric('start_latitude', { precision: 10, scale: 7 }),
   startLongitude: numeric('start_longitude', { precision: 10, scale: 7 }),
 
   createdByAdminId: uuid('created_by_admin_id').references(() => users.id),
-
-  // Campos SaaS
   organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'cascade' }),
   type: routeTypeEnum('type').default('caminhada').notNull(),
 
@@ -91,14 +98,14 @@ export const routes = pgTable('routes', {
 export const waypoints = pgTable('waypoints', {
   id: uuid('id').primaryKey().defaultRandom(),
   routeId: uuid('route_id').notNull().references(() => routes.id, { onDelete: 'cascade' }),
-  order: integer('order').notNull(),           // sequência: 1, 2, 3...
+  order: integer('order').notNull(),
   name: varchar('name', { length: 100 }).notNull(),
   description: text('description'),
   latitude: numeric('latitude', { precision: 10, scale: 7 }).notNull(),
   longitude: numeric('longitude', { precision: 10, scale: 7 }).notNull(),
-  radiusMeters: integer('radius_meters').default(50),  // raio de validação GPS
+  radiusMeters: integer('radius_meters').default(50),
   requiresSelfie: boolean('requires_selfie').default(true),
-  photoUrl: text('photo_url'),                 // foto de referência do local
+  photoUrl: text('photo_url'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
@@ -133,25 +140,18 @@ export const routeSessions = pgTable('route_sessions', {
   localId: uuid('local_id').notNull().unique(),
   userId: uuid('user_id').notNull().references(() => users.id),
   
-  // Opcional: O usuário pode fazer um "Treino Livre" sem seguir uma rota do app
   routeId: uuid('route_id').references(() => routes.id), 
   activityType: routeTypeEnum('activity_type').default('caminhada'),
-  
   status: sessionStatusEnum('status').default('em_andamento'),
   
   startedAt: timestamp('started_at').notNull(),
   completedAt: timestamp('completed_at'),
   
-  // --- MÉTRICAS REAIS DO TRACKING ---
   totalDistanceKm: numeric('total_distance_km', { precision: 8, scale: 2 }),
-  durationSeconds: integer('duration_seconds'), // Tempo real de movimento (exclui auto-pause)
-  averagePace: varchar('average_pace', { length: 15 }), // ex: "05:30/km"
+  durationSeconds: integer('duration_seconds'),
+  averagePace: varchar('average_pace', { length: 15 }),
   
-  // --- O OURO: DADOS DO MAPA E COMPARTILHAMENTO ---
-  // Guarda um array gigante com o histórico de GPS: [{lat, lng, timestamp, speed}]
   pathCoordinates: jsonb('path_coordinates'), 
-  
-  // A URL da imagem irada gerada no final com os dados + mapa para o Instagram
   socialImageUrl: text('social_image_url'),
 })
 

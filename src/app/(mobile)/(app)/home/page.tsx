@@ -7,7 +7,7 @@ import Link from 'next/link'
 import NextImage from 'next/image'
 import { createBrowserClient } from '@supabase/ssr'
 import RouteCard from '@/components/mobile/RouteCard'
-import TabBar from '@/components/mobile/TabBar' // <-- IMPORTAÇÃO DO NOVO COMPONENTE
+import TabBar from '@/components/mobile/TabBar'
 
 type UserProfile = {
   id: string
@@ -37,6 +37,9 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true)
   const [greeting, setGreeting] = useState('')
   const [filter, setFilter] = useState<string>('Todas')
+  
+  // Estado para a bolinha do sininho
+  const [unreadCount, setUnreadCount] = useState(0)
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -50,36 +53,63 @@ export default function HomePage() {
     else setGreeting('Boa noite')
   }, [])
 
+  // Carregamento inicial pesado (Perfil, Rotas e Notificações)
   useEffect(() => {
     async function loadData() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
+      const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
         router.push('/login')
         return
       }
 
-      // 👇 CORREÇÃO AQUI: Enviamos o token nativamente nos headers
       const headers = { Authorization: `Bearer ${session.access_token}` }
 
-      const [profileRes, routesRes] = await Promise.all([
+      const [profileRes, routesRes, notificationsRes] = await Promise.all([
         fetch('/api/users/me', { headers }),
         fetch('/api/routes', { headers }),
+        fetch('/api/notifications?countOnly=true', { headers })
       ])
 
       const profileData = profileRes.ok ? await profileRes.json() : null
       const routesData = routesRes.ok ? await routesRes.json() : []
+      const notifData = notificationsRes.ok ? await notificationsRes.json() : { count: 0 }
 
       setUser(profileData)
       setRoutes(Array.isArray(routesData) ? routesData : [])
+      setUnreadCount(notifData.count || 0)
       setLoading(false)
     }
 
     loadData()
   }, [router, supabase.auth])
 
-  // Filtro client-side por dificuldade
+  // -- POLLING SUAVE (Sem Realtime) --
+  // Atualiza apenas o contador de notificações a cada 30 segundos
+  useEffect(() => {
+    async function checkUnreadNotifications() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+
+      try {
+        const res = await fetch('/api/notifications?countOnly=true', {
+          headers: { Authorization: `Bearer ${session.access_token}` }
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setUnreadCount(data.count || 0)
+        }
+      } catch (err) {
+        console.error("Erro ao checar notificações em background")
+      }
+    }
+
+    // Configura o intervalo para rodar a cada 30 segundos (30000 milissegundos)
+    const intervalId = setInterval(checkUnreadNotifications, 30000)
+
+    // Limpa o intervalo se o usuário sair da tela Home
+    return () => clearInterval(intervalId)
+  }, [supabase.auth])
+
   const difficultyMap: Record<string, string> = {
     Fácil: 'facil',
     Médio: 'medio',
@@ -107,7 +137,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 font-[family-name:var(--font-dm)] pb-24">
+    <div className="min-h-screen bg-gray-50 font-[family-name:var(--font-dm)] pb-24 relative">
 
       {/* ── Header ───────────────────────────────────────── */}
       <div
@@ -123,21 +153,15 @@ export default function HomePage() {
         >
           <path
             d="M0,100 Q93,60 187,100 Q280,140 375,100"
-            fill="none"
-            stroke="#fff"
-            strokeWidth="1.5"
+            fill="none" stroke="#fff" strokeWidth="1.5"
           />
           <path
             d="M0,60 Q93,20 187,60 Q280,100 375,60"
-            fill="none"
-            stroke="#fff"
-            strokeWidth="1"
+            fill="none" stroke="#fff" strokeWidth="1"
           />
           <path
             d="M0,140 Q93,100 187,140 Q280,180 375,140"
-            fill="none"
-            stroke="#fff"
-            strokeWidth="1"
+            fill="none" stroke="#fff" strokeWidth="1"
           />
         </svg>
 
@@ -151,22 +175,25 @@ export default function HomePage() {
             className="drop-shadow-lg"
           />
           <div className="flex items-center gap-3">
-            <button
-              className="w-9 h-9 rounded-full flex items-center justify-center"
+            
+            {/* ── BOTÃO DE NOTIFICAÇÃO (SININHO) ── */}
+            <Link
+              href="/notifications"
+              className="relative w-9 h-9 rounded-full flex items-center justify-center transition-transform active:scale-90"
               style={{ background: 'rgba(255,255,255,0.2)' }}
             >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="white"
-                strokeWidth="2"
-              >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
                 <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
                 <path d="M13.73 21a2 2 0 0 1-3.46 0" />
               </svg>
-            </button>
+              {/* Bolinha vermelha de notificação via Polling */}
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 border-2 border-[#E05300] text-[8px] font-bold text-white">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </Link>
+
             <Link href="/profile">
               {user?.avatarUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -188,7 +215,6 @@ export default function HomePage() {
           <p className="text-white/60 text-xs mt-1">Pronto para uma nova aventura?</p>
         </div>
 
-        {/* Stats */}
         <div className="relative z-10 flex gap-3 mt-6">
           {[
             { label: 'Rotas feitas', value: '0' },
@@ -212,16 +238,10 @@ export default function HomePage() {
       {/* ── Conteúdo ─────────────────────────────────────── */}
       <div className="px-5 -mt-2">
 
-        {/* Search */}
         <div className="relative mb-5">
           <svg
             className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
+            width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
           >
             <circle cx="11" cy="11" r="8" />
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -234,7 +254,6 @@ export default function HomePage() {
           />
         </div>
 
-        {/* Filtros */}
         <div className="flex gap-2 mb-5 overflow-x-auto pb-1 scrollbar-hide">
           {['Todas', 'Fácil', 'Médio', 'Difícil', 'Extremo'].map((f) => (
             <button
@@ -242,10 +261,7 @@ export default function HomePage() {
               onClick={() => setFilter(f)}
               className="flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold transition-all"
               style={{
-                background:
-                  filter === f
-                    ? 'linear-gradient(135deg, #830200, #E05300)'
-                    : 'white',
+                background: filter === f ? 'linear-gradient(135deg, #830200, #E05300)' : 'white',
                 color: filter === f ? 'white' : '#888',
                 border: filter === f ? 'none' : '1.5px solid #F0F0F0',
               }}
@@ -255,7 +271,6 @@ export default function HomePage() {
           ))}
         </div>
 
-        {/* Header da seção */}
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-base font-black text-gray-900">Rotas disponíveis</h2>
@@ -271,13 +286,9 @@ export default function HomePage() {
           </Link>
         </div>
 
-        {/* Lista de rotas */}
         {filteredRoutes.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
-            <div
-              className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl"
-              style={{ background: '#FFF0EB' }}
-            >
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl" style={{ background: '#FFF0EB' }}>
               🗺️
             </div>
             <p className="text-gray-500 font-semibold text-sm">
@@ -286,11 +297,7 @@ export default function HomePage() {
                 : `Nenhuma rota "${filter}" disponível`}
             </p>
             {filter !== 'Todas' && (
-              <button
-                onClick={() => setFilter('Todas')}
-                className="text-xs font-bold"
-                style={{ color: '#E05300' }}
-              >
+              <button onClick={() => setFilter('Todas')} className="text-xs font-bold" style={{ color: '#E05300' }}>
                 Ver todas as rotas →
               </button>
             )}
@@ -315,7 +322,6 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* ── Tab Bar ───────────────────────────────────────── */}
       <TabBar active="home" />
     </div>
   )
