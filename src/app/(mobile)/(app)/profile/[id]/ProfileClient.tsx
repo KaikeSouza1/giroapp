@@ -31,8 +31,6 @@ export default function ProfileClient({ params }: { params: Promise<{ id: string
   const router = useRouter()
   
   const [profile, setProfile] = useState<PublicProfileData | null>(null)
-  
-  // ── NOVO: Armazenar o feed do usuário ──
   const [feed, setFeed] = useState<any[]>([])
   
   const [loading, setLoading] = useState(true)
@@ -50,7 +48,6 @@ export default function ProfileClient({ params }: { params: Promise<{ id: string
       if (!session) { router.push('/login'); return }
 
       try {
-        // Dispara as duas chamadas ao mesmo tempo para ser mais rápido
         const [resProfile, resFeed] = await Promise.all([
           fetch(`/api/profile/${resolvedParams.id}`, { headers: { Authorization: `Bearer ${session.access_token}` } }),
           fetch(`/api/feed?userId=${resolvedParams.id}`, { headers: { Authorization: `Bearer ${session.access_token}` } })
@@ -70,7 +67,7 @@ export default function ProfileClient({ params }: { params: Promise<{ id: string
     load()
   }, [resolvedParams.id, router, supabase.auth])
 
-  // Lógica de Seguir (Original e intocada)
+  // Lógica de Seguir e Deixar de Seguir
   async function handleToggleFollow() {
     if (!profile || isFollowLoading) return
     setIsFollowLoading(true)
@@ -86,6 +83,7 @@ export default function ProfileClient({ params }: { params: Promise<{ id: string
       setProfile((prev: PublicProfileData | null) => prev ? {
         ...prev,
         isFollowing: data.isFollowing,
+        // Incrementa ou decrementa os seguidores em tempo real na tela
         followersCount: data.isFollowing ? prev.followersCount + 1 : prev.followersCount - 1
       } : null)
     } catch (err) {
@@ -98,13 +96,11 @@ export default function ProfileClient({ params }: { params: Promise<{ id: string
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="w-8 h-8 rounded-full animate-spin" style={{ border: '3px solid #F0F0F0', borderTop: '3px solid #E05300' }} /></div>
   if (!profile) return <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-500 font-bold">Aventureiro não encontrado.</div>
 
-  // Separar treinos de trilhas
   const treinos = feed.filter(i => i.routeId === null)
   const trilhas = feed.filter(i => i.routeId !== null)
 
   return (
     <div className="min-h-screen bg-gray-50 font-[family-name:var(--font-dm)] pb-24 relative">
-      {/* ── HEADER DO PERFIL (ORIGINAL E INTOCADO) ── */}
       <div className="relative overflow-hidden px-6 pt-12 pb-16" style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
         <svg className="absolute inset-0 w-full h-full opacity-[0.1]" viewBox="0 0 375 200" preserveAspectRatio="xMidYMid slice">
           <path d="M0,100 Q93,60 187,100 Q280,140 375,100" fill="none" stroke="#fff" strokeWidth="1.5"/>
@@ -120,6 +116,7 @@ export default function ProfileClient({ params }: { params: Promise<{ id: string
         <div className="relative z-10 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             {profile.avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img src={profile.avatarUrl} alt={profile.displayName} className="w-16 h-16 rounded-2xl object-cover shadow-lg border-2 border-white/40" />
             ) : (
               <div className="w-16 h-16 rounded-2xl flex items-center justify-center font-black text-2xl text-white shadow-lg bg-white/25 border-2 border-white/40">
@@ -136,37 +133,51 @@ export default function ProfileClient({ params }: { params: Promise<{ id: string
             <button 
                 onClick={handleToggleFollow}
                 disabled={isFollowLoading}
-                className={`px-5 py-2 rounded-xl text-sm font-bold shadow-md transition-all active:scale-95 ${
+                className={`px-5 py-2 rounded-xl text-xs font-black shadow-md transition-all active:scale-95 flex items-center gap-1 ${
                     profile.isFollowing 
-                    ? 'bg-white/20 text-white border border-white/30 backdrop-blur-md' 
-                    : 'bg-white text-[#E05300]' 
+                    ? 'bg-transparent text-white border border-white/30 backdrop-blur-md' // Estilo quando está seguindo (Para deixar de seguir)
+                    : 'bg-white text-[#E05300] border border-transparent' // Estilo quando não segue
                 }`}
             >
-                {isFollowLoading ? '...' : profile.isFollowing ? 'A seguir' : 'Seguir'}
+                {isFollowLoading ? (
+                  <span className="animate-pulse">Aguarde...</span>
+                ) : profile.isFollowing ? (
+                  <>✓ Seguindo</> // Se clicar vai deixar de seguir
+                ) : (
+                  <>+ Seguir</>
+                )}
             </button>
           )}
         </div>
 
         {profile.bio && <p className="relative z-10 text-white/80 text-sm mt-4 line-clamp-2 px-1">{profile.bio}</p>}
 
-        {/* ESTATÍSTICAS */}
+        {/* ESTATÍSTICAS CLICÁVEIS */}
         <div className="relative z-10 flex gap-3 mt-6">
-          {[
-            { label: 'Treinos', value: treinos.length },
-            { label: 'Trilhas', value: trilhas.length },
-            { label: 'Seguidores', value: profile.followersCount },
-            { label: 'A seguir', value: profile.followingCount },
-          ].map(s => (
-            <div key={s.label} className="flex-1 text-center rounded-2xl py-2.5 bg-white/15 backdrop-blur-sm">
-              <p className="text-white font-black text-lg leading-none">{s.value}</p>
-              <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider truncate">{s.label}</p>
-            </div>
-          ))}
+          <div className="flex-1 text-center rounded-2xl py-2.5 bg-white/15 backdrop-blur-sm">
+            <p className="text-white font-black text-lg leading-none">{treinos.length}</p>
+            <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider truncate">Treinos</p>
+          </div>
+          <div className="flex-1 text-center rounded-2xl py-2.5 bg-white/15 backdrop-blur-sm">
+            <p className="text-white font-black text-lg leading-none">{trilhas.length}</p>
+            <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider truncate">Trilhas</p>
+          </div>
+          
+          {/* Link para listar Seguidores */}
+          <Link href={`/profile/${profile.id}/network?tab=followers`} className="flex-1 text-center rounded-2xl py-2.5 bg-white/15 backdrop-blur-sm active:scale-95 transition-transform">
+            <p className="text-white font-black text-lg leading-none">{profile.followersCount}</p>
+            <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider truncate">Seguidores</p>
+          </Link>
+
+          {/* Link para listar Seguindo */}
+          <Link href={`/profile/${profile.id}/network?tab=following`} className="flex-1 text-center rounded-2xl py-2.5 bg-white/15 backdrop-blur-sm active:scale-95 transition-transform">
+            <p className="text-white font-black text-lg leading-none">{profile.followingCount}</p>
+            <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider truncate">A seguir</p>
+          </Link>
         </div>
         <div className="absolute bottom-0 left-0 right-0 h-6 bg-gray-50 rounded-t-3xl" />
       </div>
 
-      {/* ── ABAS DE NAVEGAÇÃO ── */}
       <div className="flex mx-5 mt-2 rounded-2xl overflow-hidden border border-gray-100 bg-white mb-4 shadow-sm">
         {(['treinos', 'trilhas', 'badges'] as const).map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)}
@@ -177,10 +188,7 @@ export default function ProfileClient({ params }: { params: Promise<{ id: string
         ))}
       </div>
 
-      {/* ── CONTEÚDO DAS ABAS ── */}
       <div className="px-5">
-        
-        {/* ABA: TREINOS LIVRES */}
         {activeTab === 'treinos' && (
           treinos.length === 0 ? (
              <div className="py-12 text-center"><p className="text-gray-400 font-bold text-sm">Nenhum treino livre gravado.</p></div>
@@ -192,6 +200,7 @@ export default function ProfileClient({ params }: { params: Promise<{ id: string
                    <div key={item.id} className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 flex flex-col">
                      <div className="w-full aspect-square bg-[#0A0A0A] relative">
                        {item.socialImageUrl ? (
+                         // eslint-disable-next-line @next/next/no-img-element
                          <img src={item.socialImageUrl} className="w-full h-full object-cover" alt="Trajeto" />
                        ) : (
                          <div className="absolute inset-0 flex items-center justify-center opacity-30 text-3xl">{meta.emoji}</div>
@@ -211,7 +220,6 @@ export default function ProfileClient({ params }: { params: Promise<{ id: string
           )
         )}
 
-        {/* ABA: TRILHAS (Usando a sua lista de CompletedRoutes original mas pelo Feed) */}
         {activeTab === 'trilhas' && (
           trilhas.length === 0 ? (
              <div className="py-12 text-center"><p className="text-gray-400 font-bold text-sm">Nenhuma rota concluída.</p></div>
@@ -219,9 +227,10 @@ export default function ProfileClient({ params }: { params: Promise<{ id: string
             <div className="flex flex-col gap-3">
               {trilhas.map((item: any) => (
                 <Link key={item.id} href={`/routes/${item.routeId}`}>
-                  <div className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50">
+                  <div className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 active:scale-[0.98] transition-transform">
                     {item.coverImageUrl ? (
-                      <div className="w-16 h-16 rounded-xl flex-shrink-0 overflow-hidden">
+                      <div className="w-16 h-16 rounded-xl flex-shrink-0 overflow-hidden border border-gray-100">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={item.coverImageUrl} className="w-full h-full object-cover" alt={item.routeName} />
                       </div>
                     ) : (
@@ -230,9 +239,9 @@ export default function ProfileClient({ params }: { params: Promise<{ id: string
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-gray-900 text-sm truncate">{item.routeName}</p>
-                      <p className="text-gray-400 text-xs mt-1 font-medium">
-                        {new Date(item.completedAt).toLocaleDateString('pt-PT')} • {item.distanceKm} km
+                      <p className="font-black text-gray-900 text-sm truncate">{item.routeName}</p>
+                      <p className="text-gray-400 text-[11px] mt-1 font-bold">
+                        {new Date(item.completedAt).toLocaleDateString('pt-BR')} • {item.distanceKm} km
                       </p>
                     </div>
                   </div>
@@ -242,22 +251,21 @@ export default function ProfileClient({ params }: { params: Promise<{ id: string
           )
         )}
 
-        {/* ABA: INSÍGNIAS (A sua original!) */}
         {activeTab === 'badges' && (
           profile.badges.length === 0 ? (
              <div className="py-12 text-center"><p className="text-gray-400 font-bold text-sm">Nenhuma insígnia conquistada.</p></div>
           ) : (
              <div className="grid grid-cols-3 gap-3">
                {profile.badges.map((badge: any) => (
-                 <div key={badge.id} className="bg-white rounded-2xl p-3 text-center shadow-sm border border-gray-100">
-                   <img src={badge.imageUrl} alt={badge.name} className="w-12 h-12 rounded-xl mx-auto mb-2 object-cover" />
-                   <p className="text-[11px] font-bold text-gray-900 leading-tight line-clamp-2">{badge.name}</p>
+                 <div key={badge.id} className="bg-white rounded-2xl p-3 text-center shadow-sm border border-gray-100 flex flex-col items-center justify-center aspect-square">
+                   {/* eslint-disable-next-line @next/next/no-img-element */}
+                   <img src={badge.imageUrl} alt={badge.name} className="w-12 h-12 rounded-full mb-2 object-cover border border-gray-100" />
+                   <p className="text-[10px] font-black text-gray-900 leading-tight line-clamp-2">{badge.name}</p>
                  </div>
                ))}
              </div>
           )
         )}
-
       </div>
       <TabBar active="feed" />
     </div>
