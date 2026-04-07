@@ -4,14 +4,12 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import NextImage from 'next/image'
+import Link from 'next/link' // 👈 IMPORTAÇÃO ADICIONADA
 import { createBrowserClient } from '@supabase/ssr'
 import TabBar from '@/components/mobile/TabBar'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
-
-// IMPORTANTE: Certifique-se de que a função uploadImageToBucket está em '@/lib/supabase/storage'
 import { uploadImageToBucket } from '@/lib/supabase/storage' 
 
-// Converte Base64 para um objeto File nativo (Para evitar bugs do Capacitor no Storage)
 function dataUrlToFile(dataUrl: string, filename: string): File {
   const arr = dataUrl.split(',')
   const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg'
@@ -63,10 +61,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [isUpdatingAvatar, setIsUpdatingAvatar] = useState(false)
   const [activeTab, setActiveTab] = useState<'routes' | 'badges'>('routes')
-  
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false)
-  
-  // 👇 ESTADOS PARA O VISUALIZADOR DE FOTO (Lightbox)
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false)
 
@@ -101,16 +96,14 @@ export default function ProfilePage() {
     router.push('/login')
   }
 
-  // 👇 NOVA FUNÇÃO: ABRE O VISUALIZADOR DE FOTO
   function openPhotoViewer(photoUrl: string) {
     setSelectedPhoto(photoUrl)
     setIsPhotoViewerOpen(true)
   }
 
-  // 👇 NOVA FUNÇÃO: FECHA O VISUALIZADOR DE FOTO
   function closePhotoViewer() {
     setIsPhotoViewerOpen(false)
-    setTimeout(() => setSelectedPhoto(null), 300) // Limpa depois da animação
+    setTimeout(() => setSelectedPhoto(null), 300)
   }
 
   async function takeProfilePicture(source: CameraSource) {
@@ -132,13 +125,9 @@ export default function ProfilePage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error("Não autenticado")
 
-      // Converte o Base64 para um objeto File nativo
       const file = dataUrlToFile(image.dataUrl, 'profile.jpg')
-      
-      // Usa a sua função de Storage para upload (Bucket giro-app)
       const publicUrl = await uploadImageToBucket(file, 'giro-app', `avatars/${session.user.id}`)
 
-      // Atualiza no banco de dados
       const dbRes = await fetch('/api/users/update-avatar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -149,7 +138,6 @@ export default function ProfilePage() {
       })
 
       if (!dbRes.ok) throw new Error("Erro ao salvar no banco de dados.")
-
       setProfile(prev => prev ? { ...prev, avatarUrl: publicUrl } : null)
 
     } catch (err: any) {
@@ -190,27 +178,14 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-gray-50 font-[family-name:var(--font-dm)] pb-24 relative">
 
-      {/* ── 👇 MODAL VISUALIZADOR DE FOTO (LIGHTBOX) ────────────────────── */}
+      {/* Modal Visualizador de Foto */}
       {isPhotoViewerOpen && selectedPhoto && (
-        <div 
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm transition-all duration-300"
-          onClick={closePhotoViewer}
-        >
-          {/* Botão Fechar (X) */}
-          <button 
-            className="absolute top-10 right-6 z-10 w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white backdrop-blur-sm active:scale-95 transition-transform"
-            onClick={closePhotoViewer}
-          >
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm transition-all duration-300" onClick={closePhotoViewer}>
+          <button className="absolute top-10 right-6 z-10 w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white backdrop-blur-sm active:scale-95 transition-transform" onClick={closePhotoViewer}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
-          
-          {/* Imagem em tamanho cheio */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img 
-            src={selectedPhoto} 
-            alt="Visualização Completa" 
-            className="max-w-[90%] max-h-[85%] object-contain rounded-2xl shadow-2xl border-4 border-white/10"
-          />
+          <img src={selectedPhoto} alt="Visualização Completa" className="max-w-[90%] max-h-[85%] object-contain rounded-2xl shadow-2xl border-4 border-white/10" />
         </div>
       )}
 
@@ -248,11 +223,30 @@ export default function ProfilePage() {
           </button>
           <div><h1 className="text-white font-black text-xl leading-tight">{profile?.displayName ?? 'Aventureiro'}</h1><p className="text-white/60 text-sm font-medium mt-0.5">@{profile?.username ?? ''}</p></div>
         </div>
+        
+        {/* 👇 AQUI ESTÃO OS LINKS CLICÁVEIS CORRIGIDOS */}
         <div className="relative z-10 flex gap-3 mt-6">
-          {[ { label: 'Rotas', value: profile?.completedRoutes?.length ?? 0 }, { label: 'Insígnias', value: profile?.badges?.length ?? 0 }, { label: 'Seguidores', value: profile?.followersCount ?? 0 }, { label: 'A seguir', value: profile?.followingCount ?? 0 }, ].map(s => (
-            <div key={s.label} className="flex-1 text-center rounded-2xl py-2.5 backdrop-blur-sm" style={{ background: 'rgba(255,255,255,0.15)' }}><p className="text-white font-black text-lg leading-none">{s.value}</p><p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider">{s.label}</p></div>
-          ))}
+          <div className="flex-1 text-center rounded-2xl py-2.5 backdrop-blur-sm" style={{ background: 'rgba(255,255,255,0.15)' }}>
+            <p className="text-white font-black text-lg leading-none">{profile?.completedRoutes?.length ?? 0}</p>
+            <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider">Rotas</p>
+          </div>
+          
+          <div className="flex-1 text-center rounded-2xl py-2.5 backdrop-blur-sm" style={{ background: 'rgba(255,255,255,0.15)' }}>
+            <p className="text-white font-black text-lg leading-none">{profile?.badges?.length ?? 0}</p>
+            <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider">Insígnias</p>
+          </div>
+          
+          <Link href={`/profile/${profile?.id}/network?tab=followers`} className="flex-1 text-center rounded-2xl py-2.5 backdrop-blur-sm active:scale-95 transition-transform block" style={{ background: 'rgba(255,255,255,0.15)' }}>
+            <p className="text-white font-black text-lg leading-none">{profile?.followersCount ?? 0}</p>
+            <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider">Seguidores</p>
+          </Link>
+          
+          <Link href={`/profile/${profile?.id}/network?tab=following`} className="flex-1 text-center rounded-2xl py-2.5 backdrop-blur-sm active:scale-95 transition-transform block" style={{ background: 'rgba(255,255,255,0.15)' }}>
+            <p className="text-white font-black text-lg leading-none">{profile?.followingCount ?? 0}</p>
+            <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider">A seguir</p>
+          </Link>
         </div>
+        
         <div className="absolute bottom-0 left-0 right-0 h-6 bg-gray-50 rounded-t-3xl" />
       </div>
 
@@ -294,7 +288,7 @@ export default function ProfilePage() {
                      <div className="py-3 text-center"><p className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-0.5">Distância</p><p className="font-black text-gray-800 text-base">{route.distanceKm ? `${route.distanceKm} km` : '--'}</p></div>
                   </div>
 
-                  {/* Galeria de Fotos 👇 MODIFICADO AQUI */}
+                  {/* Galeria de Fotos */}
                   <div className="px-5 py-4">
                      <p className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-2">Check-ins Capturados (Toque para ampliar)</p>
                      
@@ -304,12 +298,11 @@ export default function ProfilePage() {
                            <button 
                              key={index} 
                              className="relative w-20 h-20 flex-shrink-0 cursor-pointer active:scale-95 transition-transform"
-                             onClick={() => openPhotoViewer(photo)} // 👇 ABRE O VISUALIZADOR AO CLICAR
+                             onClick={() => openPhotoViewer(photo)}
                            >
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                              <img src={photo} alt="Local da rota" className="w-full h-full rounded-2xl object-cover border-2 border-white shadow-md" />
                              
-                             {/* Lupa (Ícone opcional para indicar clique) */}
                              <div className="absolute inset-0 bg-black/20 rounded-2xl flex items-center justify-center text-white opacity-0 hover:opacity-100 transition-opacity">
                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
                              </div>
