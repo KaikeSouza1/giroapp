@@ -1,10 +1,4 @@
 // src/app/(mobile)/(app)/profile/[id]/page.tsx
-// ATENÇÃO: Este arquivo substitui AMBOS os arquivos duplicados que existiam:
-// - src/app/(mobile)/(app)/profile/[id]/page.tsx  (antigo, com bug)
-// - src/app/(mobile)/(app)/profile/[id]/ProfileClient.tsx  (pode ser deletado)
-//
-// A lógica foi consolidada aqui para evitar confusão e inconsistências.
-
 'use client'
 
 import { useEffect, useState, use } from 'react'
@@ -13,7 +7,8 @@ import { createBrowserClient } from '@supabase/ssr'
 import TabBar from '@/components/mobile/TabBar'
 import Link from 'next/link'
 
-export type PublicProfileData = {
+// TIPO SEM "EXPORT" PARA O VERCEL NÃO RECLAMAR
+type PublicProfileData = {
   id: string
   displayName: string
   username: string
@@ -31,10 +26,6 @@ const ACTIVITY_META: Record<string, { label: string; emoji: string }> = {
   corrida: { label: 'Corrida', emoji: '🏃' },
   cicloturismo: { label: 'Ciclismo', emoji: '🚴' },
   caminhada: { label: 'Caminhada', emoji: '🚶' },
-}
-
-export function generateStaticParams() {
-  return []
 }
 
 export default function ProfilePage({ params }: { params: Promise<{ id: string }> }) {
@@ -82,10 +73,7 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
     load()
   }, [resolvedParams.id, router, supabase.auth])
 
-  // LÓGICA DE SEGUIR CORRIGIDA:
-  // 1. Obtém o token fresco da sessão (nunca usa um token guardado em estado)
-  // 2. Atualiza a UI SOMENTE se a API retornar sucesso (res.ok)
-  // 3. Nunca decrementa o contador quando a ação falha
+  // LÓGICA DE SEGUIR BLINDADA E COM CORREÇÃO DE ESTADO
   async function handleToggleFollow() {
     if (!profile || isFollowLoading) return
     setIsFollowLoading(true)
@@ -108,15 +96,18 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
 
       const data = await res.json()
 
-      // SÓ atualiza a tela se a API retornou sucesso
+      // Só atualiza a tela se a API confirmar sucesso real (200)
       if (!res.ok) {
         throw new Error(data.error || 'Falha na comunicação com o servidor.')
       }
 
-      // Atualiza o estado local com o valor REAL que veio do servidor
       setProfile((prev) => {
         if (!prev) return null
+        
+        // Evita bugar se clicar rápido (já estava seguindo e a API mandou "isFollowing: true" de novo)
+        if (prev.isFollowing === data.isFollowing) return prev;
 
+        // MATEMÁTICA SEGURA: NUNCA abaixo de zero.
         const newFollowersCount = data.isFollowing
           ? prev.followersCount + 1
           : Math.max(0, prev.followersCount - 1)
@@ -218,7 +209,7 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
           )}
         </div>
 
-        {/* Mensagem de erro de seguir (não intrusiva) */}
+        {/* Mensagem de erro de seguir (aparece suave se a internet falhar) */}
         {followError && (
           <div className="relative z-10 mt-3 px-3 py-2 rounded-xl bg-red-500/20 border border-red-300/30">
             <p className="text-white/80 text-xs font-medium">{followError}</p>
@@ -239,7 +230,6 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
             <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider truncate">Trilhas</p>
           </div>
 
-          {/* Links de rede usando profile.id (que já sabemos que existe aqui) */}
           <Link
             href={`/profile/${profile.id}/network?tab=followers`}
             className="flex-1 text-center rounded-2xl py-2.5 bg-white/15 backdrop-blur-sm active:scale-95 transition-transform block"
