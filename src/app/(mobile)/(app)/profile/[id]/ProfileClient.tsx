@@ -67,7 +67,7 @@ export default function ProfileClient({ params }: { params: Promise<{ id: string
     load()
   }, [resolvedParams.id, router, supabase.auth])
 
-  // Lógica de Seguir e Deixar de Seguir
+  // 👇 LÓGICA DE SEGUIR BLINDADA CONTRA NÚMEROS NEGATIVOS
   async function handleToggleFollow() {
     if (!profile || isFollowLoading) return
     setIsFollowLoading(true)
@@ -78,14 +78,26 @@ export default function ProfileClient({ params }: { params: Promise<{ id: string
         method: 'POST',
         headers: { Authorization: `Bearer ${session?.access_token}` }
       })
+      
       const data = await res.json()
       
-      setProfile((prev: PublicProfileData | null) => prev ? {
-        ...prev,
-        isFollowing: data.isFollowing,
-        // Incrementa ou decrementa os seguidores em tempo real na tela
-        followersCount: data.isFollowing ? prev.followersCount + 1 : prev.followersCount - 1
-      } : null)
+      setProfile((prev: PublicProfileData | null) => {
+        if (!prev) return null;
+        
+        // Se a resposta da API for igual ao que já tá na tela, ignora (evita bugs de clique duplo)
+        if (prev.isFollowing === data.isFollowing) return prev;
+
+        // Garante que o contador aumente 1 ou diminua 1, mas NUNCA fique abaixo de 0
+        const newCount = data.isFollowing 
+          ? prev.followersCount + 1 
+          : Math.max(0, prev.followersCount - 1);
+
+        return {
+          ...prev,
+          isFollowing: data.isFollowing,
+          followersCount: newCount
+        }
+      })
     } catch (err) {
       console.error("Erro ao seguir:", err)
     } finally {
@@ -135,14 +147,14 @@ export default function ProfileClient({ params }: { params: Promise<{ id: string
                 disabled={isFollowLoading}
                 className={`px-5 py-2 rounded-xl text-xs font-black shadow-md transition-all active:scale-95 flex items-center gap-1 ${
                     profile.isFollowing 
-                    ? 'bg-transparent text-white border border-white/30 backdrop-blur-md' // Estilo quando está seguindo (Para deixar de seguir)
-                    : 'bg-white text-[#E05300] border border-transparent' // Estilo quando não segue
+                    ? 'bg-transparent text-white border border-white/30 backdrop-blur-md' // Botão "Seguindo" (Para deixar de seguir)
+                    : 'bg-white text-[#E05300] border border-transparent' // Botão "+ Seguir"
                 }`}
             >
                 {isFollowLoading ? (
                   <span className="animate-pulse">Aguarde...</span>
                 ) : profile.isFollowing ? (
-                  <>✓ Seguindo</> // Se clicar vai deixar de seguir
+                  <>✓ Seguindo</> 
                 ) : (
                   <>+ Seguir</>
                 )}
@@ -152,7 +164,6 @@ export default function ProfileClient({ params }: { params: Promise<{ id: string
 
         {profile.bio && <p className="relative z-10 text-white/80 text-sm mt-4 line-clamp-2 px-1">{profile.bio}</p>}
 
-        {/* ESTATÍSTICAS CLICÁVEIS */}
         <div className="relative z-10 flex gap-3 mt-6">
           <div className="flex-1 text-center rounded-2xl py-2.5 bg-white/15 backdrop-blur-sm">
             <p className="text-white font-black text-lg leading-none">{treinos.length}</p>
@@ -163,14 +174,12 @@ export default function ProfileClient({ params }: { params: Promise<{ id: string
             <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider truncate">Trilhas</p>
           </div>
           
-          {/* Link para listar Seguidores */}
-          <Link href={`/profile/${profile.id}/network?tab=followers`} className="flex-1 text-center rounded-2xl py-2.5 bg-white/15 backdrop-blur-sm active:scale-95 transition-transform">
+          <Link href={`/profile/${profile.id}/network?tab=followers`} className="flex-1 text-center rounded-2xl py-2.5 bg-white/15 backdrop-blur-sm active:scale-95 transition-transform block">
             <p className="text-white font-black text-lg leading-none">{profile.followersCount}</p>
             <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider truncate">Seguidores</p>
           </Link>
 
-          {/* Link para listar Seguindo */}
-          <Link href={`/profile/${profile.id}/network?tab=following`} className="flex-1 text-center rounded-2xl py-2.5 bg-white/15 backdrop-blur-sm active:scale-95 transition-transform">
+          <Link href={`/profile/${profile.id}/network?tab=following`} className="flex-1 text-center rounded-2xl py-2.5 bg-white/15 backdrop-blur-sm active:scale-95 transition-transform block">
             <p className="text-white font-black text-lg leading-none">{profile.followingCount}</p>
             <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider truncate">A seguir</p>
           </Link>
