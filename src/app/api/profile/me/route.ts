@@ -1,4 +1,3 @@
-// src/app/api/profile/me/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
@@ -40,7 +39,7 @@ export async function GET(request: NextRequest) {
       .from(followers)
       .where(eq(followers.followerId, user.id))
 
-    // BUSCA AS ROTAS CONCLUÍDAS COM AS FOTOS, TEMPO, DATAS E PRIVACIDADE (isPublic)
+    // BUSCA AS ROTAS CONCLUÍDAS COM A COLUNA DE PRIVACIDADE REAL
     const completedRoutesRes = await db
       .select({
         id: routeSessions.id,
@@ -49,14 +48,14 @@ export async function GET(request: NextRequest) {
         startedAt: routeSessions.startedAt,
         completedAt: routeSessions.completedAt,
         distanceKm: routeSessions.totalDistanceKm,
-        isPublic: routeSessions.isPublic, // 🔥 NOVO: Puxa o status de privacidade
+        isPublic: routeSessions.isPublic, // 🔥 BUSCA DO BANCO
         photos: sql<string[]>`array_remove(array_agg(${checkins.selfieImagePath}), NULL)`
       })
       .from(routeSessions)
       .innerJoin(routes, eq(routeSessions.routeId, routes.id))
       .leftJoin(checkins, eq(checkins.routeSessionId, routeSessions.id))
       .where(and(eq(routeSessions.userId, user.id), eq(routeSessions.status, 'concluido')))
-      .groupBy(routeSessions.id, routes.name, routes.type)
+      .groupBy(routeSessions.id, routes.name, routes.type, routeSessions.isPublic)
       .orderBy(desc(routeSessions.completedAt))
 
     const badgesRes = await db
@@ -71,14 +70,14 @@ export async function GET(request: NextRequest) {
       .innerJoin(badges, eq(userBadges.badgeId, badges.id))
       .where(eq(userBadges.userId, user.id))
 
-    // ─── LÓGICA DE SINCRONIZAÇÃO RETROATIVA DE INSÍGNIAS (AUTO-HEALING) ───
+    // ─── LÓGICA DE SINCRONIZAÇÃO RETROATIVA (AUTO-HEALING) ───
     const totalCompleted = completedRoutesRes.length;
     const currentBadgeNames = badgesRes.map(b => b.name);
     
     const badgeRules = [
-      { count: 1, name: 'Primeira Pegada', desc: 'Concluiu a primeira rota oficial no Giro.', img: 'https://api.dicebear.com/7.x/glass/svg?seed=Pegada&backgroundColor=e05300' },
-      { count: 5, name: 'Desbravador', desc: 'Alcançou a marca de 5 rotas oficiais.', img: 'https://api.dicebear.com/7.x/glass/svg?seed=Desbravador&backgroundColor=830200' },
-      { count: 10, name: 'Lenda do Giro', desc: 'Sobreviveu a 10 rotas oficiais épicas.', img: 'https://api.dicebear.com/7.x/glass/svg?seed=Lenda&backgroundColor=ffb300' }
+      { count: 1, name: 'Pioneiro', desc: 'Concluiu a primeira rota oficial.', img: 'internal' },
+      { count: 5, name: 'Explorador', desc: 'Alcançou a marca de 5 rotas concluídas.', img: 'internal' },
+      { count: 10, name: 'Lenda', desc: 'Completou 10 rotas oficiais épicas.', img: 'internal' }
     ];
 
     const missingRules = badgeRules.filter(rule => totalCompleted >= rule.count && !currentBadgeNames.includes(rule.name));
@@ -86,6 +85,7 @@ export async function GET(request: NextRequest) {
     if (missingRules.length > 0) {
       for (const rule of missingRules) {
         let [badgeObj] = await db.select().from(badges).where(eq(badges.name, rule.name)).limit(1);
+        
         if (!badgeObj) {
           [badgeObj] = await db.insert(badges).values({
             name: rule.name,
@@ -94,6 +94,7 @@ export async function GET(request: NextRequest) {
             type: 'conclusao_rota'
           }).returning();
         }
+
         const [newAward] = await db.insert(userBadges).values({
           userId: user.id,
           badgeId: badgeObj.id
@@ -108,7 +109,6 @@ export async function GET(request: NextRequest) {
         });
       }
     }
-    // ──────────────────────────────────────────────────────────────────────
 
     const profileData = {
       id: user.id,
@@ -125,7 +125,6 @@ export async function GET(request: NextRequest) {
            const diffMs = new Date(r.completedAt).getTime() - new Date(r.startedAt).getTime()
            elapsedMinutes = Math.floor(diffMs / 60000)
         }
-
         return {
           id: r.id,
           routeName: r.routeName,
@@ -133,7 +132,7 @@ export async function GET(request: NextRequest) {
           completedAt: r.completedAt ? r.completedAt.toISOString() : new Date().toISOString(),
           distanceKm: r.distanceKm,
           elapsedMinutes,
-          isPublic: r.isPublic, // 🔥 Garante que o Front-end recebe isto
+          isPublic: r.isPublic, // 🔥 REPASSA PARA O FRONT
           photos: Array.from(new Set(r.photos || [])).filter(Boolean)
         }
       }),
@@ -146,6 +145,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(profileData)
   } catch (err: any) {
     console.error("[API /profile/me] Erro:", err)
-    return NextResponse.json({ error: 'Erro interno no servidor' }, { status: 500 })
+    return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
   }
 }

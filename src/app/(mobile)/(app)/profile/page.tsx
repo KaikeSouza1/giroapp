@@ -1,4 +1,3 @@
-// src/app/(mobile)/(app)/profile/page.tsx
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -20,6 +19,20 @@ function dataUrlToFile(dataUrl: string, filename: string): File {
     u8arr[n] = bstr.charCodeAt(n)
   }
   return new File([u8arr], filename, { type: mime })
+}
+
+// 🔥 DESENHO DAS MEDALHAS VIA CÓDIGO (NUNCA FALHA)
+function GiroBadgeSVG({ name }: { name: string }) {
+  if (name === 'Pioneiro') return (
+    <svg width="60" height="60" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="url(#p1)" stroke="#fff" strokeWidth="3"/><path d="M50 25L58 43H78L62 55L68 75L50 63L32 75L38 55L22 43H42L50 25Z" fill="#fff"/><defs><linearGradient id="p1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#CD7F32"/><stop offset="100%" stopColor="#8B4513"/></linearGradient></defs></svg>
+  )
+  if (name === 'Explorador') return (
+    <svg width="60" height="60" viewBox="0 0 100 100"><rect x="15" y="15" width="70" height="70" rx="15" fill="url(#p2)" stroke="#fff" strokeWidth="3"/><path d="M50 30V70M30 50H70" stroke="#fff" strokeWidth="10" strokeLinecap="round"/><defs><linearGradient id="p2" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#C0C0C0"/><stop offset="100%" stopColor="#4F4F4F"/></linearGradient></defs></svg>
+  )
+  if (name === 'Lenda') return (
+    <svg width="60" height="60" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="url(#p3)" stroke="#fff" strokeWidth="3"/><text x="50" y="65" textAnchor="middle" fill="#fff" fontSize="40" fontWeight="900">G</text><defs><linearGradient id="p3" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#FFD700"/><stop offset="100%" stopColor="#E05300"/></linearGradient></defs></svg>
+  )
+  return <div className="text-3xl">🏅</div>
 }
 
 type Badge = {
@@ -104,10 +117,8 @@ export default function ProfilePage() {
     setTimeout(() => setSelectedPhoto(null), 300)
   }
 
-  // Função para alterar Privacidade da Rota
   async function toggleVisibility(sessionId: string, currentIsPublic: boolean) {
     const newStatus = !currentIsPublic
-    
     setProfile(prev => {
       if (!prev) return prev
       return {
@@ -115,7 +126,6 @@ export default function ProfilePage() {
         completedRoutes: prev.completedRoutes.map(r => r.id === sessionId ? { ...r, isPublic: newStatus } : r)
       }
     })
-
     try {
       await fetch(`/api/sessions/${sessionId}/visibility`, {
         method: 'PATCH',
@@ -225,7 +235,7 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Header com Gradiente */}
+      {/* Header com Gradiente e Ondas */}
       <div className="relative overflow-hidden px-6 pt-12 pb-16"
         style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
         <svg className="absolute inset-0 w-full h-full opacity-[0.1]" viewBox="0 0 375 200" preserveAspectRatio="xMidYMid slice"><path d="M0,100 Q93,60 187,100 Q280,140 375,100" fill="none" stroke="#fff" strokeWidth="1.5"/></svg>
@@ -237,12 +247,11 @@ export default function ProfilePage() {
           <button onClick={() => setIsAvatarModalOpen(true)} className="relative rounded-2xl shadow-lg active:scale-95 group">
             {isUpdatingAvatar && <div className="absolute inset-0 bg-black/50 rounded-2xl flex items-center justify-center z-20"><div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" /></div>}
             <div className="absolute -bottom-2 -right-2 bg-white rounded-full p-1.5 shadow-md z-10 text-orange-600"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>
-            <img src={profile?.avatarUrl || ''} alt="Avatar" className="w-16 h-16 rounded-2xl object-cover border-2 border-white/40" />
+            <img src={profile?.avatarUrl || ''} alt="Avatar" className="w-16 h-16 rounded-2xl object-cover border-2 border-white/40 shadow-lg" />
           </button>
           <div><h1 className="text-white font-black text-xl leading-tight">{profile?.displayName}</h1><p className="text-white/60 text-sm font-medium">@{profile?.username}</p></div>
         </div>
 
-        {/* ESTATÍSTICAS */}
         <div className="relative z-10 flex gap-3 mt-6">
           <div className="flex-1 text-center rounded-2xl py-2.5 backdrop-blur-sm" style={{ background: 'rgba(255,255,255,0.15)' }}>
             <p className="text-white font-black text-lg leading-none">{profile?.completedRoutes?.length ?? 0}</p>
@@ -265,10 +274,10 @@ export default function ProfilePage() {
             </>
           )}
         </div>
-        <div className="absolute bottom-0 left-0 right-0 h-6 bg-gray-50 rounded-t-3xl" />
+        <div className="absolute bottom-0 left-0 right-0 h-6 bg-gray-50 rounded-t-[32px]" />
       </div>
 
-      <div className="flex mx-5 mt-2 rounded-2xl overflow-hidden border border-gray-100 bg-white mb-4 shadow-sm">
+      <div className="flex mx-5 mt-4 rounded-2xl overflow-hidden border border-gray-100 bg-white mb-4 shadow-sm">
         {(['routes', 'badges'] as const).map((tab) => (
           <button key={tab} onClick={() => setActiveTab(tab)} className="flex-1 py-3 text-[11px] font-black transition-all" style={{ color: activeTab === tab ? 'white' : '#999', background: activeTab === tab ? 'linear-gradient(135deg, #830200, #E05300)' : 'transparent' }}>
             {tab === 'routes' ? '🗺️ HISTÓRICO' : '🏆 CONQUISTAS'}
@@ -280,23 +289,18 @@ export default function ProfilePage() {
         {activeTab === 'routes' && (
           <div className="flex flex-col gap-4">
             {profile?.completedRoutes.length === 0 ? (
-               <div className="py-12 text-center">
-                 <p className="text-gray-400 font-bold text-sm uppercase tracking-widest">Nenhuma rota concluída</p>
-               </div>
+               <div className="py-12 text-center"><p className="text-gray-400 font-bold text-sm uppercase tracking-widest">Nenhuma rota concluída</p></div>
             ) : (
               profile?.completedRoutes.map(route => {
                 const info = getTypeInfo(route.routeType)
                 return (
                   <div key={route.id} className="bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-100 relative">
-                    
-                    {/* Tarja de Privado caso o usuário tenha marcado */}
                     {!route.isPublic && (
                       <div className="absolute top-4 right-4 z-10 flex items-center gap-1 bg-gray-900/80 backdrop-blur-sm px-2.5 py-1 rounded-lg">
                         <span className="text-[9px] text-white">🔒</span>
                         <span className="text-[8px] font-black text-white uppercase tracking-widest">Privado</span>
                       </div>
                     )}
-
                     <div className="px-5 pt-4 pb-3 flex justify-between items-start border-b border-gray-50">
                       <div>
                         <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md mb-1.5 ${info.color}`}><span className="text-[10px]">{info.icon}</span><span className="text-[9px] font-bold uppercase tracking-wider">{info.label}</span></div>
@@ -315,8 +319,6 @@ export default function ProfilePage() {
                         ))}
                       </div>
                     </div>
-
-                    {/* BOTÃO DE CONTROLE DE PRIVACIDADE */}
                     <div className="px-5 py-3 bg-gray-50/50 flex justify-between items-center">
                        <p className="text-[10px] text-gray-500 font-bold">Visibilidade no Perfil:</p>
                        <button 
@@ -332,30 +334,22 @@ export default function ProfilePage() {
             )}
           </div>
         )}
-        
-        {/* ABA DE INSÍGNIAS (VISUAL PREMIUM 3D) */}
+
         {activeTab === 'badges' && (
           <div className="grid grid-cols-2 gap-4">
             {profile?.badges.length === 0 ? (
                <div className="col-span-2 py-12 text-center">
                  <div className="text-4xl mb-3 grayscale opacity-30">🏅</div>
                  <p className="text-gray-400 font-bold text-sm uppercase tracking-widest">Sem insígnias ainda</p>
-                 <p className="text-gray-400 text-xs mt-1">Conclua rotas para ganhar.</p>
                </div>
             ) : (
               profile?.badges.map(b => (
-                <div key={b.id} className="relative bg-white rounded-3xl p-5 text-center shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-orange-50 flex flex-col items-center justify-center overflow-hidden group">
-                  <div className="absolute inset-0 bg-gradient-to-b from-orange-50/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                  
-                  {/* Container da Imagem com efeito Glow/Glass */}
-                  <div className="relative w-20 h-20 mb-3 rounded-[24px] bg-gradient-to-br from-gray-50 to-gray-100 shadow-inner flex items-center justify-center p-2 border border-white z-10">
-                    <img src={b.imageUrl} className="w-full h-full object-contain drop-shadow-md transition-transform duration-500 group-hover:scale-110 group-hover:drop-shadow-xl" />
+                <div key={b.id} className="relative bg-white rounded-3xl p-5 text-center shadow-sm border border-orange-50 flex flex-col items-center group">
+                  <div className="mb-3 transform group-hover:scale-110 transition-transform duration-300">
+                    <GiroBadgeSVG name={b.name} />
                   </div>
-                  
-                  <p className="text-[11px] font-black text-gray-900 leading-tight uppercase tracking-widest z-10">{b.name}</p>
-                  {b.description && (
-                    <p className="text-[10px] text-gray-400 mt-1.5 font-medium leading-snug z-10">{b.description}</p>
-                  )}
+                  <p className="text-[11px] font-black text-gray-900 uppercase tracking-widest">{b.name}</p>
+                  <p className="text-[9px] text-gray-400 mt-1.5 font-bold leading-tight">{b.description}</p>
                 </div>
               ))
             )}
