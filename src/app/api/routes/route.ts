@@ -1,11 +1,10 @@
-// src/app/api/routes/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
 import { routes, users, waypoints, organizations } from '@/lib/db/remote/schema'
 import { eq, desc, and } from 'drizzle-orm'
 
-// GET — lista todas as rotas (puxando início do primeiro waypoint)
+// GET — Lista apenas as rotas PUBLICADAS para a Home e Mapa dos usuários
 export async function GET() {
   try {
     const supabase = await createClient()
@@ -13,8 +12,7 @@ export async function GET() {
     
     if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
-    // Query otimizada para buscar a coordenada do waypoint de ordem 1
-    const allRoutes = await db.select({
+    const publicRoutes = await db.select({
       id: routes.id,
       name: routes.name,
       description: routes.description,
@@ -24,7 +22,6 @@ export async function GET() {
       distanceKm: routes.distanceKm,
       estimatedMinutes: routes.estimatedMinutes,
       coverImageUrl: routes.coverImageUrl,
-      // Coordenadas extraídas dinamicamente do primeiro waypoint
       startLatitude: waypoints.latitude,
       startLongitude: waypoints.longitude,
       createdAt: routes.createdAt,
@@ -32,18 +29,19 @@ export async function GET() {
     })
     .from(routes)
     .leftJoin(organizations, eq(routes.organizationId, organizations.id))
-    // Join específico para pegar apenas o ponto de início (Ordem 1)
     .leftJoin(waypoints, and(eq(waypoints.routeId, routes.id), eq(waypoints.order, 1)))
+    // 👇 Uso obrigatório do termo 'publicado' devido ao Schema do Drizzle 👇
+    .where(eq(routes.status, 'publicado'))
     .orderBy(desc(routes.createdAt))
 
-    return NextResponse.json(allRoutes)
+    return NextResponse.json(publicRoutes)
   } catch (err: any) {
     console.error("[API /routes] Erro no GET:", err)
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
 
-// POST — cria nova rota
+// POST — Cria nova rota (Apenas Admins)
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -79,7 +77,7 @@ export async function POST(request: NextRequest) {
       distanceKm: body.distanceKm ? body.distanceKm.toString() : null,
       estimatedMinutes: body.estimatedMinutes ? parseInt(body.estimatedMinutes) : null,
       organizationId,
-      status: 'rascunho',
+      status: 'rascunho', // Uso obrigatório do termo 'rascunho' devido ao Schema
     }).returning()
 
     if (body.waypoints?.length > 0) {
