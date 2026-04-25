@@ -3,37 +3,36 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
 import { routes, users, waypoints, organizations } from '@/lib/db/remote/schema'
-import { eq, desc, and } from 'drizzle-orm'
+import { eq, desc } from 'drizzle-orm'
 
-// GET — Lista as rotas para qualquer usuário logado
+// GET — Lista todas as rotas sem filtros de permissão ou status
 export async function GET() {
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     
-    // 1. Apenas checa se está autenticado no Supabase
+    // Verifica apenas se o cara está logado no Supabase
     if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
-    // 2. Busca as rotas incluindo os campos de imagem e descrição que faltavam
+    // Query limpa: busca todos os campos necessários para o RouteCard
     const allRoutes = await db.select({
       id: routes.id,
       name: routes.name,
-      description: routes.description, // Campo para o texto do card
+      description: routes.description, // AGORA PUXA A DESCRIÇÃO
       difficulty: routes.difficulty,
       status: routes.status,
       type: routes.type,
       distanceKm: routes.distanceKm,
-      estimatedMinutes: routes.estimatedMinutes, // Campo para o tempo do card
-      coverImageUrl: routes.coverImageUrl, // CAMPO ESSENCIAL PARA A FOTO APARECER
+      estimatedMinutes: routes.estimatedMinutes, // AGORA PUXA O TEMPO ESTIMADO
+      coverImageUrl: routes.coverImageUrl, // AGORA PUXA A FOTO DE CAPA
       createdAt: routes.createdAt,
       organizationName: organizations.name,
     })
     .from(routes)
     .leftJoin(organizations, eq(routes.organizationId, organizations.id))
-    // Filtramos para mostrar apenas o que está 'publicado' para todos
-    .where(eq(routes.status, 'publicado')) 
     .orderBy(desc(routes.createdAt))
 
+    // Retorna tudo o que encontrar, sem frescura de role ou status
     return NextResponse.json(allRoutes)
   } catch (err: any) {
     console.error("[API /routes] Erro no GET:", err)
@@ -41,19 +40,19 @@ export async function GET() {
   }
 }
 
-// POST — Cria nova rota (Apenas Admins ainda podem criar para segurança)
+// POST — Cria nova rota (mantido apenas para admins para não zonearem seu banco)
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const [dbUser] = await db.select().from(users)
       .where(eq(users.supabaseAuthId, user.id)).limit(1)
 
-    // Mantemos a trava apenas para a CRIAÇÃO de novas rotas
+    // Bloqueia criação para usuários normais, mas a visualização (GET) está liberada acima
     if (!dbUser || (dbUser.role !== 'superadmin' && dbUser.role !== 'admin_org')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      return NextResponse.json({ error: 'Proibido: Apenas administradores criam rotas' }, { status: 403 })
     }
 
     const body = await request.json()
@@ -78,7 +77,7 @@ export async function POST(request: NextRequest) {
       distanceKm: body.distanceKm ? body.distanceKm.toString() : null,
       estimatedMinutes: body.estimatedMinutes ? parseInt(body.estimatedMinutes) : null,
       organizationId,
-      status: 'rascunho',
+      status: 'rascunho', 
     }).returning()
 
     if (body.waypoints?.length > 0) {
