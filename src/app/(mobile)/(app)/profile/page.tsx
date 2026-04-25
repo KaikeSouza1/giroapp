@@ -37,6 +37,7 @@ type CompletedRoute = {
   completedAt: string
   distanceKm: string | null
   elapsedMinutes: number
+  isPublic: boolean
   photos: string[]
 }
 
@@ -101,6 +102,36 @@ export default function ProfilePage() {
   function closePhotoViewer() {
     setIsPhotoViewerOpen(false)
     setTimeout(() => setSelectedPhoto(null), 300)
+  }
+
+  // Função para alterar Privacidade da Rota
+  async function toggleVisibility(sessionId: string, currentIsPublic: boolean) {
+    const newStatus = !currentIsPublic
+    
+    setProfile(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        completedRoutes: prev.completedRoutes.map(r => r.id === sessionId ? { ...r, isPublic: newStatus } : r)
+      }
+    })
+
+    try {
+      await fetch(`/api/sessions/${sessionId}/visibility`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isPublic: newStatus })
+      })
+    } catch (e) {
+      console.error("Erro ao alterar privacidade", e)
+      setProfile(prev => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          completedRoutes: prev.completedRoutes.map(r => r.id === sessionId ? { ...r, isPublic: currentIsPublic } : r)
+        }
+      })
+    }
   }
 
   async function takeProfilePicture(source: CameraSource) {
@@ -256,7 +287,16 @@ export default function ProfilePage() {
               profile?.completedRoutes.map(route => {
                 const info = getTypeInfo(route.routeType)
                 return (
-                  <div key={route.id} className="bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-100">
+                  <div key={route.id} className="bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-100 relative">
+                    
+                    {/* Tarja de Privado caso o usuário tenha marcado */}
+                    {!route.isPublic && (
+                      <div className="absolute top-4 right-4 z-10 flex items-center gap-1 bg-gray-900/80 backdrop-blur-sm px-2.5 py-1 rounded-lg">
+                        <span className="text-[9px] text-white">🔒</span>
+                        <span className="text-[8px] font-black text-white uppercase tracking-widest">Privado</span>
+                      </div>
+                    )}
+
                     <div className="px-5 pt-4 pb-3 flex justify-between items-start border-b border-gray-50">
                       <div>
                         <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md mb-1.5 ${info.color}`}><span className="text-[10px]">{info.icon}</span><span className="text-[9px] font-bold uppercase tracking-wider">{info.label}</span></div>
@@ -268,12 +308,23 @@ export default function ProfilePage() {
                       <div className="text-center"><p className="text-[9px] font-bold text-gray-400 uppercase">Tempo</p><p className="font-black text-gray-800">{formatTime(route.elapsedMinutes)}</p></div>
                       <div className="text-center"><p className="text-[9px] font-bold text-gray-400 uppercase">Distância</p><p className="font-black text-gray-800">{route.distanceKm} km</p></div>
                     </div>
-                    <div className="px-5 py-4">
+                    <div className="px-5 py-4 border-b border-gray-50">
                       <div className="flex gap-2 overflow-x-auto scrollbar-hide">
                         {route.photos.map((p, i) => (
-                          <button key={i} onClick={() => openPhotoViewer(p)} className="relative w-20 h-20 flex-shrink-0 active:scale-95"><img src={p} className="w-full h-full rounded-2xl object-cover border-2 border-white shadow-md" /></button>
+                          <button key={i} onClick={() => openPhotoViewer(p)} className="relative w-20 h-20 flex-shrink-0 active:scale-95"><img src={p} className="w-full h-full rounded-2xl object-cover border-2 border-gray-100 shadow-sm" /></button>
                         ))}
                       </div>
+                    </div>
+
+                    {/* BOTÃO DE CONTROLE DE PRIVACIDADE */}
+                    <div className="px-5 py-3 bg-gray-50/50 flex justify-between items-center">
+                       <p className="text-[10px] text-gray-500 font-bold">Visibilidade no Perfil:</p>
+                       <button 
+                         onClick={() => toggleVisibility(route.id, route.isPublic)}
+                         className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 ${route.isPublic ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-gray-200 text-gray-600 border border-gray-300'}`}
+                       >
+                         {route.isPublic ? '👁️ Público' : '🔒 Oculto'}
+                       </button>
                     </div>
                   </div>
                 )

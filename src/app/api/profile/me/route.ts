@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
       .from(followers)
       .where(eq(followers.followerId, user.id))
 
-    // BUSCA AS ROTAS CONCLUÍDAS COM AS FOTOS, TEMPO E DATAS
+    // BUSCA AS ROTAS CONCLUÍDAS COM AS FOTOS, TEMPO, DATAS E PRIVACIDADE (isPublic)
     const completedRoutesRes = await db
       .select({
         id: routeSessions.id,
@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
         startedAt: routeSessions.startedAt,
         completedAt: routeSessions.completedAt,
         distanceKm: routeSessions.totalDistanceKm,
+        isPublic: routeSessions.isPublic, // 🔥 NOVO: Puxa o status de privacidade
         photos: sql<string[]>`array_remove(array_agg(${checkins.selfieImagePath}), NULL)`
       })
       .from(routeSessions)
@@ -74,21 +75,17 @@ export async function GET(request: NextRequest) {
     const totalCompleted = completedRoutesRes.length;
     const currentBadgeNames = badgesRes.map(b => b.name);
     
-    // Regras de conquista
     const badgeRules = [
       { count: 1, name: 'Primeira Pegada', desc: 'Concluiu a primeira rota oficial no Giro.', img: 'https://api.dicebear.com/7.x/glass/svg?seed=Pegada&backgroundColor=e05300' },
       { count: 5, name: 'Desbravador', desc: 'Alcançou a marca de 5 rotas oficiais.', img: 'https://api.dicebear.com/7.x/glass/svg?seed=Desbravador&backgroundColor=830200' },
       { count: 10, name: 'Lenda do Giro', desc: 'Sobreviveu a 10 rotas oficiais épicas.', img: 'https://api.dicebear.com/7.x/glass/svg?seed=Lenda&backgroundColor=ffb300' }
     ];
 
-    // Verifica se o usuário bateu a meta de alguma insígnia que ele AINDA NÃO TEM
     const missingRules = badgeRules.filter(rule => totalCompleted >= rule.count && !currentBadgeNames.includes(rule.name));
 
     if (missingRules.length > 0) {
       for (const rule of missingRules) {
-        // 1. Verifica se a insígnia existe no banco de dados geral, se não, cria
         let [badgeObj] = await db.select().from(badges).where(eq(badges.name, rule.name)).limit(1);
-        
         if (!badgeObj) {
           [badgeObj] = await db.insert(badges).values({
             name: rule.name,
@@ -97,14 +94,11 @@ export async function GET(request: NextRequest) {
             type: 'conclusao_rota'
           }).returning();
         }
-
-        // 2. Entrega a insígnia retroativamente para o usuário
         const [newAward] = await db.insert(userBadges).values({
           userId: user.id,
           badgeId: badgeObj.id
         }).returning();
 
-        // 3. Adiciona a nova insígnia na resposta para aparecer imediatamente na tela
         badgesRes.push({
           id: badgeObj.id,
           name: badgeObj.name,
@@ -139,6 +133,7 @@ export async function GET(request: NextRequest) {
           completedAt: r.completedAt ? r.completedAt.toISOString() : new Date().toISOString(),
           distanceKm: r.distanceKm,
           elapsedMinutes,
+          isPublic: r.isPublic, // 🔥 Garante que o Front-end recebe isto
           photos: Array.from(new Set(r.photos || [])).filter(Boolean)
         }
       }),

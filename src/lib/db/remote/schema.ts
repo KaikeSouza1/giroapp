@@ -144,6 +144,8 @@ export const routeSessions = pgTable('route_sessions', {
   activityType: routeTypeEnum('activity_type').default('caminhada'),
   status: sessionStatusEnum('status').default('em_andamento'),
   
+  isPublic: boolean('is_public').default(true).notNull(), // 🔥 ADICIONE ESTA LINHA AQUI
+  
   startedAt: timestamp('started_at').notNull(),
   completedAt: timestamp('completed_at'),
   
