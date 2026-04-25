@@ -242,7 +242,8 @@ export default function HomePage() {
 
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-black text-gray-900">Rotas Criadas por Orgs</h2>
-          <Link href="/home" className="text-xs font-bold" style={{ color: '#E05300' }}>
+          {/* LINK ATUALIZADO AQUI */}
+          <Link href="/map" className="text-xs font-bold active:scale-95 transition-transform" style={{ color: '#E05300' }}>
             Explorar Mapa →
           </Link>
         </div>

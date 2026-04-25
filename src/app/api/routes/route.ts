@@ -1,30 +1,31 @@
-// src/app/api/routes/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
 import { routes, users, waypoints, organizations } from '@/lib/db/remote/schema'
 import { eq, desc } from 'drizzle-orm'
 
-// GET — Lista todas as rotas sem filtros de permissão ou status
+// GET — lista todas as rotas (para Home, Mapa e Admin)
 export async function GET() {
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     
-    // Verifica apenas se o cara está logado no Supabase
+    // Verifica apenas se está autenticado no app
     if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
-    // Query limpa: busca todos os campos necessários para o RouteCard
+    // Busca todas as rotas, ignorando cargo e status, e puxa TODOS os campos necessários (incluindo coordenadas)
     const allRoutes = await db.select({
       id: routes.id,
       name: routes.name,
-      description: routes.description, // AGORA PUXA A DESCRIÇÃO
+      description: routes.description,
       difficulty: routes.difficulty,
       status: routes.status,
       type: routes.type,
       distanceKm: routes.distanceKm,
-      estimatedMinutes: routes.estimatedMinutes, // AGORA PUXA O TEMPO ESTIMADO
-      coverImageUrl: routes.coverImageUrl, // AGORA PUXA A FOTO DE CAPA
+      estimatedMinutes: routes.estimatedMinutes,
+      coverImageUrl: routes.coverImageUrl,
+      startLatitude: routes.startLatitude,
+      startLongitude: routes.startLongitude,
       createdAt: routes.createdAt,
       organizationName: organizations.name,
     })
@@ -32,7 +33,6 @@ export async function GET() {
     .leftJoin(organizations, eq(routes.organizationId, organizations.id))
     .orderBy(desc(routes.createdAt))
 
-    // Retorna tudo o que encontrar, sem frescura de role ou status
     return NextResponse.json(allRoutes)
   } catch (err: any) {
     console.error("[API /routes] Erro no GET:", err)
@@ -40,7 +40,7 @@ export async function GET() {
   }
 }
 
-// POST — Cria nova rota (mantido apenas para admins para não zonearem seu banco)
+// POST — cria nova rota
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -50,9 +50,9 @@ export async function POST(request: NextRequest) {
     const [dbUser] = await db.select().from(users)
       .where(eq(users.supabaseAuthId, user.id)).limit(1)
 
-    // Bloqueia criação para usuários normais, mas a visualização (GET) está liberada acima
+    // Apenas admins podem criar rotas
     if (!dbUser || (dbUser.role !== 'superadmin' && dbUser.role !== 'admin_org')) {
-      return NextResponse.json({ error: 'Proibido: Apenas administradores criam rotas' }, { status: 403 })
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     const body = await request.json()
@@ -77,9 +77,10 @@ export async function POST(request: NextRequest) {
       distanceKm: body.distanceKm ? body.distanceKm.toString() : null,
       estimatedMinutes: body.estimatedMinutes ? parseInt(body.estimatedMinutes) : null,
       organizationId,
-      status: 'rascunho', 
+      status: 'rascunho',
     }).returning()
 
+    // Insere os waypoints se houver
     if (body.waypoints?.length > 0) {
       await db.insert(waypoints).values(
         body.waypoints.map((wp: any, i: number) => ({

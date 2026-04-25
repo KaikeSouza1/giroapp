@@ -26,7 +26,7 @@ export default function TabBar({ active }: { active: Tab }) {
             <circle cx="9" cy="7" r="4" />
             <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
           </svg>
-          <span className={`text-[10px] font-black uppercase tracking-tight ${active === 'feed' ? 'text-orange-600' : 'text-gray-400'}`}>Mural</span>
+          <span className={`text-[10px] font-black uppercase tracking-tight ${active === 'feed' ? 'text-orange-600' : 'text-gray-400'}`}>Feed</span>
         </Link>
 
         {/* PERFIL */}
