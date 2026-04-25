@@ -38,7 +38,7 @@ export default function HomePage() {
   const [greeting, setGreeting] = useState('')
   const [filter, setFilter] = useState<string>('Todas')
   
-  // Estado para a bolinha do sininho
+  // Estado para a bolinha do sininho (Polling)
   const [unreadCount, setUnreadCount] = useState(0)
 
   const supabase = createBrowserClient(
@@ -83,8 +83,7 @@ export default function HomePage() {
     loadData()
   }, [router, supabase.auth])
 
-  // -- POLLING SUAVE (Sem Realtime) --
-  // Atualiza apenas o contador de notificações a cada 30 segundos
+  // -- POLLING SUAVE --
   useEffect(() => {
     async function checkUnreadNotifications() {
       const { data: { session } } = await supabase.auth.getSession()
@@ -103,10 +102,7 @@ export default function HomePage() {
       }
     }
 
-    // Configura o intervalo para rodar a cada 30 segundos (30000 milissegundos)
     const intervalId = setInterval(checkUnreadNotifications, 30000)
-
-    // Limpa o intervalo se o usuário sair da tela Home
     return () => clearInterval(intervalId)
   }, [supabase.auth])
 
@@ -130,7 +126,7 @@ export default function HomePage() {
             className="w-10 h-10 rounded-full animate-spin"
             style={{ border: '3px solid #F0F0F0', borderTop: '3px solid #E05300' }}
           />
-          <p className="text-gray-400 text-sm">Carregando...</p>
+          <p className="text-gray-400 text-sm">Carregando rotas...</p>
         </div>
       </div>
     )
@@ -138,8 +134,6 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gray-50 font-[family-name:var(--font-dm)] pb-24 relative">
-
-      {/* ── Header ───────────────────────────────────────── */}
       <div
         className="relative overflow-hidden px-6 pt-12 pb-16"
         style={{
@@ -151,32 +145,14 @@ export default function HomePage() {
           viewBox="0 0 375 220"
           preserveAspectRatio="xMidYMid slice"
         >
-          <path
-            d="M0,100 Q93,60 187,100 Q280,140 375,100"
-            fill="none" stroke="#fff" strokeWidth="1.5"
-          />
-          <path
-            d="M0,60 Q93,20 187,60 Q280,100 375,60"
-            fill="none" stroke="#fff" strokeWidth="1"
-          />
-          <path
-            d="M0,140 Q93,100 187,140 Q280,180 375,140"
-            fill="none" stroke="#fff" strokeWidth="1"
-          />
+          <path d="M0,100 Q93,60 187,100 Q280,140 375,100" fill="none" stroke="#fff" strokeWidth="1.5" />
+          <path d="M0,60 Q93,20 187,60 Q280,100 375,60" fill="none" stroke="#fff" strokeWidth="1" />
+          <path d="M0,140 Q93,100 187,140 Q280,180 375,140" fill="none" stroke="#fff" strokeWidth="1" />
         </svg>
 
         <div className="relative z-10 flex items-center justify-between mb-8">
-          <NextImage
-            src="/logogiroprincipal.png"
-            alt="GIRO"
-            width={90}
-            height={36}
-            priority
-            className="drop-shadow-lg"
-          />
+          <NextImage src="/logogiroprincipal.png" alt="GIRO" width={90} height={36} priority className="drop-shadow-lg" />
           <div className="flex items-center gap-3">
-            
-            {/* ── BOTÃO DE NOTIFICAÇÃO (SININHO) ── */}
             <Link
               href="/notifications"
               className="relative w-9 h-9 rounded-full flex items-center justify-center transition-transform active:scale-90"
@@ -186,7 +162,6 @@ export default function HomePage() {
                 <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
                 <path d="M13.73 21a2 2 0 0 1-3.46 0" />
               </svg>
-              {/* Bolinha vermelha de notificação via Polling */}
               {unreadCount > 0 && (
                 <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 border-2 border-[#E05300] text-[8px] font-bold text-white">
                   {unreadCount > 9 ? '9+' : unreadCount}
@@ -196,7 +171,6 @@ export default function HomePage() {
 
             <Link href="/profile">
               {user?.avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
                 <img src={user.avatarUrl} alt="Perfil" className="w-9 h-9 rounded-full object-cover shadow-lg border-2 border-white/40" />
               ) : (
                 <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shadow-lg" style={{ background: 'rgba(255,255,255,0.25)', color: 'white' }}>
@@ -212,14 +186,14 @@ export default function HomePage() {
           <h1 className="text-white font-black text-2xl leading-tight">
             {user?.displayName?.split(' ')[0] ?? 'Aventureiro'} 👋
           </h1>
-          <p className="text-white/60 text-xs mt-1">Pronto para uma nova aventura?</p>
+          <p className="text-white/60 text-xs mt-1">Qual será a sua rota oficial de hoje?</p>
         </div>
 
         <div className="relative z-10 flex gap-3 mt-6">
           {[
             { label: 'Rotas feitas', value: '0' },
             { label: 'Insígnias', value: '0' },
-            { label: 'Km percorridos', value: '0' },
+            { label: 'Conclusões', value: '0' },
           ].map((stat) => (
             <div
               key={stat.label}
@@ -235,20 +209,15 @@ export default function HomePage() {
         <div className="absolute bottom-0 left-0 right-0 h-8 bg-gray-50 rounded-t-3xl" />
       </div>
 
-      {/* ── Conteúdo ─────────────────────────────────────── */}
       <div className="px-5 -mt-2">
-
         <div className="relative mb-5">
-          <svg
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-            width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-          >
+          <svg className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="11" cy="11" r="8" />
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
           <input
             type="text"
-            placeholder="Buscar trilhas..."
+            placeholder="Buscar rotas oficiais..."
             className="w-full pl-10 pr-4 py-3.5 rounded-2xl text-sm text-gray-800 placeholder-gray-400 outline-none bg-white shadow-sm"
             style={{ border: '1.5px solid #F0F0F0' }}
           />
@@ -272,51 +241,21 @@ export default function HomePage() {
         </div>
 
         <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-base font-black text-gray-900">Rotas disponíveis</h2>
-            {filter !== 'Todas' && (
-              <p className="text-xs text-gray-400 mt-0.5">
-                {filteredRoutes.length} rota{filteredRoutes.length !== 1 ? 's' : ''} encontrada
-                {filteredRoutes.length !== 1 ? 's' : ''}
-              </p>
-            )}
-          </div>
-          <Link href="/routes" className="text-xs font-bold" style={{ color: '#E05300' }}>
-            Ver todas →
+          <h2 className="text-base font-black text-gray-900">Rotas Criadas por Orgs</h2>
+          <Link href="/home" className="text-xs font-bold" style={{ color: '#E05300' }}>
+            Explorar Mapa →
           </Link>
         </div>
 
         {filteredRoutes.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl" style={{ background: '#FFF0EB' }}>
-              🗺️
-            </div>
-            <p className="text-gray-500 font-semibold text-sm">
-              {filter === 'Todas'
-                ? 'Nenhuma rota disponível ainda'
-                : `Nenhuma rota "${filter}" disponível`}
-            </p>
-            {filter !== 'Todas' && (
-              <button onClick={() => setFilter('Todas')} className="text-xs font-bold" style={{ color: '#E05300' }}>
-                Ver todas as rotas →
-              </button>
-            )}
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl" style={{ background: '#FFF0EB' }}>🗺️</div>
+            <p className="text-gray-500 font-semibold text-sm">Nenhuma rota oficial disponível</p>
           </div>
         ) : (
           <div className="flex flex-col gap-4">
             {filteredRoutes.map((route) => (
-              <RouteCard
-                key={route.id}
-                id={route.id}
-                name={route.name}
-                description={route.description}
-                difficulty={route.difficulty}
-                type={route.type}
-                distanceKm={route.distanceKm}
-                estimatedMinutes={route.estimatedMinutes}
-                coverImageUrl={route.coverImageUrl}
-                organizationName={route.organizationName}
-              />
+              <RouteCard key={route.id} {...route} />
             ))}
           </div>
         )}

@@ -1,14 +1,33 @@
 // src/app/(mobile)/(app)/profile/[id]/page.tsx
 'use client'
 
-import { useEffect, useState, use } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { useRouter, useParams } from 'next/navigation'
+import NextImage from 'next/image'
+import Link from 'next/link'
 import { createBrowserClient } from '@supabase/ssr'
 import TabBar from '@/components/mobile/TabBar'
-import Link from 'next/link'
 
-// TIPO SEM "EXPORT" PARA O VERCEL NÃO RECLAMAR
-type PublicProfileData = {
+type Badge = {
+  id: string
+  name: string
+  description: string | null
+  imageUrl: string
+  awardedAt: string
+}
+
+type CompletedRoute = {
+  id: string
+  routeName: string
+  routeType: string
+  completedAt: string
+  distanceKm: string | null
+  elapsedMinutes: number
+  photos: string[]
+  routeId: string
+}
+
+type ProfileData = {
   id: string
   displayName: string
   username: string
@@ -17,27 +36,23 @@ type PublicProfileData = {
   followersCount: number
   followingCount: number
   isFollowing: boolean
-  isMe: boolean
-  badges: any[]
-  completedRoutes: any[]
+  badges: Badge[]
+  completedRoutes: CompletedRoute[]
 }
 
-const ACTIVITY_META: Record<string, { label: string; emoji: string }> = {
-  corrida: { label: 'Corrida', emoji: '🏃' },
-  cicloturismo: { label: 'Ciclismo', emoji: '🚴' },
-  caminhada: { label: 'Caminhada', emoji: '🚶' },
-}
-
-export default function ProfilePage({ params }: { params: Promise<{ id: string }> }) {
-  const resolvedParams = use(params)
+export default function PublicProfilePage() {
   const router = useRouter()
+  const params = useParams()
+  const targetUserId = params.id as string
 
-  const [profile, setProfile] = useState<PublicProfileData | null>(null)
-  const [feed, setFeed] = useState<any[]>([])
+  const [profile, setProfile] = useState<ProfileData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'treinos' | 'trilhas' | 'badges'>('treinos')
-  const [isFollowLoading, setIsFollowLoading] = useState(false)
-  const [followError, setFollowError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'routes' | 'badges'>('routes')
+  const [followLoading, setFollowLoading] = useState(false)
+  
+  // Estado para visualização de foto em tela cheia
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
+  const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false)
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -49,312 +64,218 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      try {
-        const [resProfile, resFeed] = await Promise.all([
-          fetch(`/api/profile/${resolvedParams.id}`, {
-            headers: { Authorization: `Bearer ${session.access_token}` }
-          }),
-          fetch(`/api/feed?userId=${resolvedParams.id}`, {
-            headers: { Authorization: `Bearer ${session.access_token}` }
-          })
-        ])
+      // Se o ID for o meu próprio, redireciona para o meu perfil
+      if (targetUserId === session.user.id) {
+        router.push('/profile')
+        return
+      }
 
-        if (resProfile.ok) setProfile(await resProfile.json())
-        if (resFeed.ok) {
-          const data = await resFeed.json()
-          setFeed(Array.isArray(data) ? data : [])
+      try {
+        const res = await fetch(`/api/profile/${targetUserId}`, {
+          headers: { Authorization: `Bearer ${session.access_token}` }
+        })
+        const data = await res.json()
+        
+        // Filtra para garantir que apenas Rotas Oficiais apareçam (remove treinos)
+        if (data.completedRoutes) {
+          data.completedRoutes = data.completedRoutes.filter((r: any) => r.routeId !== null)
         }
+        
+        setProfile(data)
       } catch (err) {
-        console.error('Erro ao carregar perfil:', err)
+        console.error('Erro ao carregar perfil público:', err)
       } finally {
         setLoading(false)
       }
     }
     load()
-  }, [resolvedParams.id, router, supabase.auth])
+  }, [targetUserId, router, supabase.auth])
 
-  // LÓGICA DE SEGUIR BLINDADA E COM CORREÇÃO DE ESTADO
-  async function handleToggleFollow() {
-    if (!profile || isFollowLoading) return
-    setIsFollowLoading(true)
-    setFollowError(null)
+  async function toggleFollow() {
+    setFollowLoading(true)
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return
 
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        router.push('/login')
-        return
-      }
-
-      const res = await fetch(`/api/profile/${profile.id}/follow`, {
+      const res = await fetch(`/api/profile/${targetUserId}/follow`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
+        headers: { Authorization: `Bearer ${session.access_token}` }
       })
-
-      const data = await res.json()
-
-      // Só atualiza a tela se a API confirmar sucesso real (200)
-      if (!res.ok) {
-        throw new Error(data.error || 'Falha na comunicação com o servidor.')
-      }
-
-      setProfile((prev) => {
-        if (!prev) return null
-        
-        // Evita bugar se clicar rápido (já estava seguindo e a API mandou "isFollowing: true" de novo)
-        if (prev.isFollowing === data.isFollowing) return prev;
-
-        // MATEMÁTICA SEGURA: NUNCA abaixo de zero.
-        const newFollowersCount = data.isFollowing
-          ? prev.followersCount + 1
-          : Math.max(0, prev.followersCount - 1)
-
-        return {
+      if (res.ok) {
+        setProfile(prev => prev ? {
           ...prev,
-          isFollowing: data.isFollowing,
-          followersCount: newFollowersCount,
-        }
-      })
-    } catch (err: any) {
-      console.error('Erro ao seguir:', err)
-      setFollowError(err.message || 'Não foi possível concluir a ação.')
+          isFollowing: !prev.isFollowing,
+          followersCount: prev.isFollowing ? prev.followersCount - 1 : prev.followersCount + 1
+        } : null)
+      }
+    } catch (err) {
+      console.error(err)
     } finally {
-      setIsFollowLoading(false)
+      setFollowLoading(false)
     }
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="w-8 h-8 rounded-full animate-spin" style={{ border: '3px solid #F0F0F0', borderTop: '3px solid #E05300' }} />
-      </div>
-    )
+  const formatTime = (mins: number) => {
+    if (mins < 60) return `${mins}m`
+    const h = Math.floor(mins / 60)
+    const m = mins % 60
+    return m > 0 ? `${h}h ${m}m` : `${h}h`
   }
 
-  if (!profile) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-500 font-bold">
-        Aventureiro não encontrado.
-      </div>
-    )
-  }
-
-  const treinos = feed.filter((i) => i.routeId === null)
-  const trilhas = feed.filter((i) => i.routeId !== null)
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="w-8 h-8 rounded-full animate-spin border-2 border-orange-500 border-t-transparent" />
+    </div>
+  )
 
   return (
     <div className="min-h-screen bg-gray-50 font-[family-name:var(--font-dm)] pb-24 relative">
-      {/* Header */}
-      <div
-        className="relative overflow-hidden px-6 pt-12 pb-16"
-        style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}
-      >
-        <svg className="absolute inset-0 w-full h-full opacity-[0.1]" viewBox="0 0 375 200" preserveAspectRatio="xMidYMid slice">
-          <path d="M0,100 Q93,60 187,100 Q280,140 375,100" fill="none" stroke="#fff" strokeWidth="1.5" />
-          <path d="M0,60 Q93,20 187,60 Q280,100 375,60" fill="none" stroke="#fff" strokeWidth="1" />
-        </svg>
 
-        <div className="relative z-10 flex items-center justify-between mb-6">
-          <button
-            onClick={() => router.back()}
-            className="flex items-center justify-center w-10 h-10 rounded-full bg-white/20 text-white hover:bg-white/30 transition-all backdrop-blur-md"
+      {/* Visualizador de Foto em Tela Cheia */}
+      {isPhotoViewerOpen && selectedPhoto && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm" onClick={() => setIsPhotoViewerOpen(false)}>
+          <button className="absolute top-10 right-6 z-10 w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+          <img src={selectedPhoto} alt="Foto da Rota" className="max-w-[90%] max-h-[85%] object-contain rounded-2xl shadow-2xl" />
+        </div>
+      )}
+
+      {/* Header Premium */}
+      <div className="relative overflow-hidden px-6 pt-12 pb-16"
+        style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
+        
+        <button onClick={() => router.back()} className="absolute top-12 left-6 z-10 w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-white backdrop-blur-md">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+
+        <div className="relative z-10 flex flex-col items-center text-center mt-4">
+          <div className="relative mb-4">
+            <img src={profile?.avatarUrl || ''} alt="Avatar" className="w-24 h-24 rounded-[32px] object-cover border-4 border-white/20 shadow-2xl" />
+          </div>
+          <h1 className="text-white font-black text-2xl leading-tight">{profile?.displayName}</h1>
+          <p className="text-white/60 text-sm font-medium">@{profile?.username}</p>
+
+          <button 
+            onClick={toggleFollow}
+            disabled={followLoading}
+            className={`mt-5 px-8 py-2.5 rounded-2xl font-black text-sm transition-all active:scale-95 ${profile?.isFollowing ? 'bg-white/20 text-white border border-white/30' : 'bg-white text-orange-600 shadow-lg'}`}
           >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
+            {followLoading ? '...' : profile?.isFollowing ? 'SEGUINDO' : 'SEGUIR'}
           </button>
         </div>
 
-        <div className="relative z-10 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            {profile.avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={profile.avatarUrl}
-                alt={profile.displayName}
-                className="w-16 h-16 rounded-2xl object-cover shadow-lg border-2 border-white/40"
-              />
-            ) : (
-              <div className="w-16 h-16 rounded-2xl flex items-center justify-center font-black text-2xl text-white shadow-lg bg-white/25 border-2 border-white/40">
-                {profile.displayName.charAt(0).toUpperCase()}
-              </div>
-            )}
-            <div>
-              <h1 className="text-white font-black text-xl leading-tight">{profile.displayName}</h1>
-              <p className="text-white/60 text-sm font-medium mt-0.5">@{profile.username}</p>
-            </div>
+        {/* ESTATÍSTICAS */}
+        <div className="relative z-10 flex gap-3 mt-8">
+          <div className="flex-1 text-center rounded-2xl py-3 backdrop-blur-sm" style={{ background: 'rgba(255,255,255,0.12)' }}>
+            <p className="text-white font-black text-xl leading-none">{profile?.completedRoutes?.length ?? 0}</p>
+            <p className="text-white/60 text-[9px] font-bold uppercase mt-1 tracking-wider">Rotas</p>
           </div>
-
-          {!profile.isMe && (
-            <button
-              onClick={handleToggleFollow}
-              disabled={isFollowLoading}
-              className={`px-5 py-2 rounded-xl text-xs font-black shadow-md transition-all active:scale-95 flex items-center gap-1 disabled:opacity-60 ${
-                profile.isFollowing
-                  ? 'bg-transparent text-white border border-white/30 backdrop-blur-md'
-                  : 'bg-white text-[#E05300] border border-transparent'
-              }`}
-            >
-              {isFollowLoading ? (
-                <span className="animate-pulse">Aguarde...</span>
-              ) : profile.isFollowing ? (
-                <>✓ Seguindo</>
-              ) : (
-                <>+ Seguir</>
-              )}
-            </button>
-          )}
-        </div>
-
-        {/* Mensagem de erro de seguir (aparece suave se a internet falhar) */}
-        {followError && (
-          <div className="relative z-10 mt-3 px-3 py-2 rounded-xl bg-red-500/20 border border-red-300/30">
-            <p className="text-white/80 text-xs font-medium">{followError}</p>
+          <div className="flex-1 text-center rounded-2xl py-3 backdrop-blur-sm" style={{ background: 'rgba(255,255,255,0.12)' }}>
+            <p className="text-white font-black text-xl leading-none">{profile?.followersCount ?? 0}</p>
+            <p className="text-white/60 text-[9px] font-bold uppercase mt-1 tracking-wider">Seguidores</p>
           </div>
-        )}
-
-        {profile.bio && (
-          <p className="relative z-10 text-white/80 text-sm mt-4 line-clamp-2 px-1">{profile.bio}</p>
-        )}
-
-        <div className="relative z-10 flex gap-3 mt-6">
-          <div className="flex-1 text-center rounded-2xl py-2.5 bg-white/15 backdrop-blur-sm">
-            <p className="text-white font-black text-lg leading-none">{treinos.length}</p>
-            <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider truncate">Treinos</p>
+          <div className="flex-1 text-center rounded-2xl py-3 backdrop-blur-sm" style={{ background: 'rgba(255,255,255,0.12)' }}>
+            <p className="text-white font-black text-xl leading-none">{profile?.followingCount ?? 0}</p>
+            <p className="text-white/60 text-[9px] font-bold uppercase mt-1 tracking-wider">A seguir</p>
           </div>
-          <div className="flex-1 text-center rounded-2xl py-2.5 bg-white/15 backdrop-blur-sm">
-            <p className="text-white font-black text-lg leading-none">{trilhas.length}</p>
-            <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider truncate">Trilhas</p>
-          </div>
-
-          <Link
-            href={`/profile/${profile.id}/network?tab=followers`}
-            className="flex-1 text-center rounded-2xl py-2.5 bg-white/15 backdrop-blur-sm active:scale-95 transition-transform block"
-          >
-            <p className="text-white font-black text-lg leading-none">{Math.max(0, profile.followersCount)}</p>
-            <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider truncate">Seguidores</p>
-          </Link>
-
-          <Link
-            href={`/profile/${profile.id}/network?tab=following`}
-            className="flex-1 text-center rounded-2xl py-2.5 bg-white/15 backdrop-blur-sm active:scale-95 transition-transform block"
-          >
-            <p className="text-white font-black text-lg leading-none">{Math.max(0, profile.followingCount)}</p>
-            <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider truncate">A seguir</p>
-          </Link>
         </div>
 
         <div className="absolute bottom-0 left-0 right-0 h-6 bg-gray-50 rounded-t-3xl" />
       </div>
 
-      {/* Abas */}
-      <div className="flex mx-5 mt-2 rounded-2xl overflow-hidden border border-gray-100 bg-white mb-4 shadow-sm">
-        {(['treinos', 'trilhas', 'badges'] as const).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className="flex-1 py-3 text-[11px] font-bold transition-all uppercase tracking-wider"
-            style={{
-              color: activeTab === tab ? 'white' : '#999',
-              background: activeTab === tab ? 'linear-gradient(135deg, #830200, #E05300)' : 'transparent',
-            }}
+      {/* Tabs */}
+      <div className="flex mx-5 mt-2 rounded-2xl overflow-hidden border border-gray-100 bg-white mb-6 shadow-sm">
+        {(['routes', 'badges'] as const).map((tab) => (
+          <button 
+            key={tab} 
+            onClick={() => setActiveTab(tab)} 
+            className={`flex-1 py-3.5 text-[11px] font-black transition-all ${activeTab === tab ? 'bg-orange-500 text-white' : 'text-gray-400'}`}
           >
-            {tab === 'treinos' ? 'Treinos' : tab === 'trilhas' ? 'Trilhas' : 'Insígnias'}
+            {tab === 'routes' ? '🗺️ HISTÓRICO DE ROTAS' : '🏆 CONQUISTAS'}
           </button>
         ))}
       </div>
 
-      {/* Conteúdo das abas */}
       <div className="px-5">
-        {activeTab === 'treinos' && (
-          treinos.length === 0 ? (
-            <div className="py-12 text-center">
-              <p className="text-gray-400 font-bold text-sm">Nenhum treino livre gravado.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
-              {treinos.map((item: any) => {
-                const meta = ACTIVITY_META[item.activityType] || { label: item.activityType, emoji: '🔥' }
-                return (
-                  <div key={item.id} className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 flex flex-col">
-                    <div className="w-full aspect-square bg-[#0A0A0A] relative">
-                      {item.socialImageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={item.socialImageUrl} className="w-full h-full object-cover" alt="Trajeto" />
-                      ) : (
-                        <div className="absolute inset-0 flex items-center justify-center opacity-30 text-3xl">
-                          {meta.emoji}
-                        </div>
-                      )}
-                      <div className="absolute top-2 left-2 bg-black/50 backdrop-blur-md px-2 py-1 rounded text-[10px] text-white font-bold">
-                        {item.distanceKm} km
+        {activeTab === 'routes' && (
+          <div className="flex flex-col gap-5">
+            {profile?.completedRoutes && profile.completedRoutes.length > 0 ? (
+              profile.completedRoutes.map(route => (
+                <div key={route.id} className="bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-100">
+                  {/* Cabeçalho do Card */}
+                  <div className="px-5 pt-4 pb-3 flex justify-between items-start border-b border-gray-50">
+                    <div>
+                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md mb-1.5 bg-orange-50 text-orange-700">
+                        <span className="text-[10px]">📍</span>
+                        <span className="text-[9px] font-bold uppercase tracking-wider">Rota Oficial</span>
                       </div>
+                      <h3 className="font-black text-gray-900 text-lg leading-tight">{route.routeName}</h3>
+                      <p className="text-gray-400 text-xs mt-1 font-medium">{new Date(route.completedAt).toLocaleDateString('pt-BR')}</p>
                     </div>
-                    <div className="p-3">
-                      <p className="text-gray-900 text-xs font-black truncate">{meta.label}</p>
-                      <p className="text-gray-400 text-[10px] mt-0.5">{item.averagePace}/km</p>
+                    {/* Link para a rota oficial caso queira ver os detalhes da trilha */}
+                    <Link href={`/routes/${route.routeId}`} className="text-[10px] font-bold text-orange-500 bg-orange-50 px-2 py-1 rounded-lg">VER MAPA</Link>
+                  </div>
+
+                  {/* Stats da Conclusão */}
+                  <div className="grid grid-cols-2 divide-x divide-gray-50 bg-gray-50/30 py-3 border-b border-gray-50">
+                    <div className="text-center">
+                      <p className="text-gray-400 text-[9px] font-bold uppercase">Tempo</p>
+                      <p className="font-black text-gray-800">{formatTime(route.elapsedMinutes)}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-gray-400 text-[9px] font-bold uppercase">Distância</p>
+                      <p className="font-black text-gray-800">{route.distanceKm || '--'} km</p>
                     </div>
                   </div>
-                )
-              })}
-            </div>
-          )
-        )}
 
-        {activeTab === 'trilhas' && (
-          trilhas.length === 0 ? (
-            <div className="py-12 text-center">
-              <p className="text-gray-400 font-bold text-sm">Nenhuma rota concluída.</p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {trilhas.map((item: any) => (
-                <Link key={item.id} href={`/routes/${item.routeId}`}>
-                  <div className="bg-white rounded-2xl p-4 flex items-center gap-4 shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 active:scale-[0.98] transition-transform">
-                    {item.coverImageUrl ? (
-                      <div className="w-16 h-16 rounded-xl flex-shrink-0 overflow-hidden border border-gray-100">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={item.coverImageUrl} className="w-full h-full object-cover" alt={item.routeName} />
+                  {/* Galeria de Fotos do Usuário */}
+                  <div className="px-5 py-4">
+                    <p className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-2">Fotos capturadas</p>
+                    {route.photos && route.photos.length > 0 ? (
+                      <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+                        {route.photos.map((p, i) => (
+                          <button 
+                            key={i} 
+                            onClick={() => { setSelectedPhoto(p); setIsPhotoViewerOpen(true); }} 
+                            className="relative w-24 h-24 flex-shrink-0 active:scale-95 transition-transform"
+                          >
+                            <img src={p} className="w-full h-full rounded-2xl object-cover border-2 border-white shadow-md" />
+                          </button>
+                        ))}
                       </div>
                     ) : (
-                      <div className="w-16 h-16 rounded-xl flex items-center justify-center flex-shrink-0 bg-gradient-to-br from-[#830200] to-[#E05300]">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
+                      <div className="py-4 text-center border border-dashed border-gray-100 rounded-2xl bg-gray-50/50">
+                        <p className="text-[10px] text-gray-400 font-bold uppercase">Nenhum registro visual</p>
                       </div>
                     )}
-                    <div className="flex-1 min-w-0">
-                      <p className="font-black text-gray-900 text-sm truncate">{item.routeName}</p>
-                      <p className="text-gray-400 text-[11px] mt-1 font-bold">
-                        {new Date(item.completedAt).toLocaleDateString('pt-BR')} • {item.distanceKm} km
-                      </p>
-                    </div>
                   </div>
-                </Link>
-              ))}
-            </div>
-          )
+                </div>
+              ))
+            ) : (
+              <div className="py-20 text-center flex flex-col items-center gap-4">
+                <div className="w-16 h-16 rounded-full bg-orange-50 flex items-center justify-center text-3xl">🗺️</div>
+                <p className="text-gray-500 font-bold text-sm">Nenhuma rota oficial concluída ainda</p>
+              </div>
+            )}
+          </div>
         )}
 
         {activeTab === 'badges' && (
-          profile.badges.length === 0 ? (
-            <div className="py-12 text-center">
-              <p className="text-gray-400 font-bold text-sm">Nenhuma insígnia conquistada.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-3 gap-3">
-              {profile.badges.map((badge: any) => (
-                <div key={badge.id} className="bg-white rounded-2xl p-3 text-center shadow-sm border border-gray-100 flex flex-col items-center justify-center aspect-square">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={badge.imageUrl} alt={badge.name} className="w-12 h-12 rounded-full mb-2 object-cover border border-gray-100" />
-                  <p className="text-[10px] font-black text-gray-900 leading-tight line-clamp-2">{badge.name}</p>
+          <div className="grid grid-cols-3 gap-3">
+            {profile?.badges && profile.badges.length > 0 ? (
+              profile.badges.map(b => (
+                <div key={b.id} className="bg-white rounded-2xl p-3 text-center shadow-sm border border-gray-50">
+                  <img src={b.imageUrl} className="w-12 h-12 mx-auto mb-2 object-contain" />
+                  <p className="text-[10px] font-black text-gray-900 leading-tight uppercase line-clamp-2">{b.name}</p>
                 </div>
-              ))}
-            </div>
-          )
+              ))
+            ) : (
+              <div className="col-span-3 py-20 text-center">
+                <p className="text-gray-400 font-bold text-sm">Nenhuma insígnia conquistada</p>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
