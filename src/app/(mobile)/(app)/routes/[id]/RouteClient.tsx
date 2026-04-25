@@ -234,7 +234,7 @@ export default function RouteClient({ params }: { params: Promise<{ id: string }
                             className="text-[10px] font-bold px-2 py-0.5 rounded-full"
                             style={{ background: '#FFF0EB', color: '#E05300' }}
                           >
-                            📸 Selfie
+                            📸 Foto
                           </span>
                         )}
                       </div>
