@@ -119,12 +119,11 @@ export default function SummaryClient() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error('Não autenticado')
 
-      // 🚀 SOLUÇÃO DOS 4 MINUTOS: Corta a requisição se demorar mais de 8 segundos (falta de internet)
+      // 🚀 TIMEOUT RESTRITO DE 8 SEGUNDOS
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 8000)
 
       try {
-        // CORREÇÃO: URL correta e payload formatado igual ao que o Drizzle espera
         const res = await fetch('/api/activities/save-session', {
           method: 'POST',
           signal: controller.signal,
@@ -158,10 +157,13 @@ export default function SummaryClient() {
         }
       } catch (fetchErr: any) {
         clearTimeout(timeoutId)
-        if (fetchErr.name !== 'AbortError') {
+        
+        if (fetchErr.name === 'AbortError') {
+          console.warn('Timeout offline alcançado no salvamento principal. Ignorando e seguindo.')
+          // Ignoramos a falha para permitir que o usuário continue o fluxo da tela no modo Offline
+        } else {
           throw fetchErr
         }
-        // Se for AbortError (timeout), a gente ignora e finge que deu certo para o fluxo offline continuar!
       }
 
       router.replace('/activity/share')

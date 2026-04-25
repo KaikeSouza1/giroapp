@@ -215,28 +215,36 @@ export default function RecordClient() {
 
   // ── Finalizar Atividade (CORRIGIDO PARA NÃO BUGAR A TELA) ───────────────
   function handleStop() {
-    // 1. Esconde o modal de confirmação e sobe a tela de "Salvando" instantaneamente
+    // 1. Esconde o modal e exibe o estado de finalização instantaneamente
     setShowStopModal(false)
     setIsFinishing(true)
 
-    // 🚀 FORÇA BRUTA: Destrói o mapa no DOM instantaneamente para não ficar "fantasma" por 15s
+    // 🚀 FORÇA BRUTA DEFINITIVA: Destruição do Leaflet da memória e DOM
     if (mapRef.current) {
-      mapRef.current.remove()
+      try { mapRef.current.remove() } catch (e) {}
       mapRef.current = null
     }
+
+    if (mapContainerRef.current) {
+      mapContainerRef.current.style.display = 'none'
+      mapContainerRef.current.innerHTML = ''
+    }
+
     const mapEl = document.getElementById('map-container-record')
     if (mapEl) {
       mapEl.style.display = 'none'
       mapEl.innerHTML = ''
     }
 
-    // 2. Coloca um pequeno delay (setTimeout) para dar tempo do React renderizar a tela preta de salvamento
-    // antes de travarmos o navegador com o router.replace e o desligamento do GPS
-    setTimeout(async () => {
-      await stopGpsWatch()
-      store.stopActivity()
-      router.replace('/activity/summary')
-    }, 150)
+    // 2. requestAnimationFrame garante que o React desenhe a tela preta de isFinishing
+    // antes de travarmos a main thread com stopActivity e o replace.
+    requestAnimationFrame(() => {
+      setTimeout(async () => {
+        await stopGpsWatch()
+        store.stopActivity()
+        router.replace('/activity/summary')
+      }, 50)
+    })
   }
 
   function handlePauseResume() {
