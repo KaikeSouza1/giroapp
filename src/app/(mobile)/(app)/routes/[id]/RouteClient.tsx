@@ -41,10 +41,12 @@ export default function RouteClient({ params }: { params: Promise<{ id: string }
   const router = useRouter()
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
+  const tileLayerRef = useRef<any>(null) // Referência para podermos trocar a camada sem recarregar o mapa
 
   const [route, setRoute] = useState<RouteDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [mapReady, setMapReady] = useState(false)
+  const [isSatellite, setIsSatellite] = useState(false) // Novo estado para controlar o tipo do mapa
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -67,18 +69,22 @@ export default function RouteClient({ params }: { params: Promise<{ id: string }
     load()
   }, [resolvedParams.id, router, supabase.auth])
 
+  // Inicializa o mapa UMA VEZ
   useEffect(() => {
     if (!route || !mapContainerRef.current || mapRef.current) return
     const currentRoute = route
+    
     async function initMap() {
       const L = (await import('leaflet')).default
       await import('leaflet/dist/leaflet.css')
+      
       delete (L.Icon.Default.prototype as any)._getIconUrl
       L.Icon.Default.mergeOptions({
         iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
         iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
         shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
       })
+      
       const firstWp = currentRoute.waypoints[0]
       const center: [number, number] = firstWp
         ? [parseFloat(firstWp.latitude), parseFloat(firstWp.longitude)]
@@ -86,8 +92,10 @@ export default function RouteClient({ params }: { params: Promise<{ id: string }
       
       const map = L.map(mapContainerRef.current!, { center, zoom: 14, zoomControl: false })
       
-      // 👇 MAPA HÍBRIDO DO GOOGLE MAPS ADICIONADO AQUI 👇
-      L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+      // Inicialmente carrega o Google Maps padrão (lyrs=m)
+      const initialUrl = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}'
+      
+      tileLayerRef.current = L.tileLayer(initialUrl, {
         maxZoom: 20,
         attribution: '© Google Maps'
       }).addTo(map)
@@ -113,6 +121,18 @@ export default function RouteClient({ params }: { params: Promise<{ id: string }
     initMap()
   }, [route])
 
+  // Efeito reativo para trocar a camada do mapa ao clicar no botão
+  useEffect(() => {
+    if (tileLayerRef.current) {
+      // lyrs=y (Híbrido Satélite) | lyrs=m (Padrão)
+      const newUrl = isSatellite 
+        ? 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}' 
+        : 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}'
+      
+      tileLayerRef.current.setUrl(newUrl)
+    }
+  }, [isSatellite])
+
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-white">
       <div className="w-8 h-8 rounded-full animate-spin" style={{ border: '3px solid #F0F0F0', borderTop: '3px solid #E05300' }} />
@@ -130,19 +150,36 @@ export default function RouteClient({ params }: { params: Promise<{ id: string }
   return (
     <div className="min-h-screen bg-white font-[family-name:var(--font-dm)]">
       <div className="relative h-64">
+        {/* Container do Leaflet */}
         <div ref={mapContainerRef} className="absolute inset-0" />
+        
         {!mapReady && (
-          <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
+          <div className="absolute inset-0 bg-gray-100 flex items-center justify-center z-[500]">
             <div className="w-8 h-8 rounded-full animate-spin" style={{ border: '3px solid #F0F0F0', borderTop: '3px solid #E05300' }} />
           </div>
         )}
+        
+        {/* Botão de Voltar (Canto Superior Esquerdo) */}
         <button
           onClick={() => router.back()}
-          className="absolute top-4 left-4 z-[1000] w-9 h-9 rounded-full flex items-center justify-center shadow-lg"
+          className="absolute top-4 left-4 z-[1000] w-10 h-10 rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-transform"
           style={{ background: 'white' }}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2.5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2.5">
             <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
+
+        {/* Botão de Trocar Camada (Canto Superior Direito) */}
+        <button
+          onClick={() => setIsSatellite(!isSatellite)}
+          className="absolute top-4 right-4 z-[1000] w-10 h-10 rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-transform"
+          style={{ background: isSatellite ? '#1F2937' : 'white' }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={isSatellite ? 'white' : '#333'} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="3 6 12 11 21 6 12 1 3 6"></polygon>
+            <polygon points="3 11 12 16 21 11"></polygon>
+            <polygon points="3 16 12 21 21 16"></polygon>
           </svg>
         </button>
       </div>
