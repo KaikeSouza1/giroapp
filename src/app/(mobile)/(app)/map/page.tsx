@@ -43,10 +43,14 @@ export default function ExploreMapPage() {
         })
         if (res.ok) {
           const data = await res.json()
-          // Filtra rotas que têm coordenada inicial
-          const validRoutes = data.filter((r: Route) => r.startLatitude && r.startLongitude)
-          setRoutes(validRoutes)
-          if (validRoutes.length > 0) setActiveRouteId(validRoutes[0].id)
+          
+          // CORREÇÃO AQUI: Removemos o filtro restrito. 
+          // Agora carrega TODAS as rotas que a API devolver (as 3 vão aparecer)
+          setRoutes(data)
+          
+          if (data.length > 0) {
+            setActiveRouteId(data[0].id)
+          }
         }
       } catch (err) {
         console.error("Erro ao buscar rotas para o mapa", err)
@@ -62,19 +66,17 @@ export default function ExploreMapPage() {
       
       {/* ==========================================
           AREA DO MAPA
-          (Substitua esta div pelo seu <MapContainer> do Leaflet ou Google Maps)
           ========================================== */}
       <div className="absolute inset-0 z-0 bg-[#E5E3DF]">
-        {/* Um fundo simulando o mapa enquanto você não pluga a lib oficial */}
+        {/* Fundo simulando mapa */}
         <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(#830200 1px, transparent 1px)', backgroundSize: '30px 30px' }} />
         
-        {/* Pinos Mockados (Simulando os waypoints no mapa) */}
+        {/* Pinos */}
         {routes.map((route) => (
           <button 
             key={route.id}
             onClick={() => setActiveRouteId(route.id)}
             className={`absolute flex items-center justify-center transition-all duration-300 ${activeRouteId === route.id ? 'scale-125 z-20' : 'scale-100 z-10'}`}
-            // Posições randômicas apenas para o placeholder visual, no mapa real você usará as coordenadas (route.startLatitude)
             style={{ 
               top: `${Math.random() * 50 + 20}%`, 
               left: `${Math.random() * 70 + 10}%` 
@@ -87,7 +89,7 @@ export default function ExploreMapPage() {
         ))}
       </div>
 
-      {/* Header Transparente com Botão Voltar */}
+      {/* Header com Botão Voltar */}
       <div className="absolute top-12 left-6 right-6 z-10 flex items-center justify-between pointer-events-none">
         <button 
           onClick={() => router.back()} 
@@ -101,7 +103,7 @@ export default function ExploreMapPage() {
         </div>
       </div>
 
-      {/* Carrossel de Cards Flutuante (Estilo Airbnb) */}
+      {/* Carrossel de Cards Flutuante */}
       <div className="absolute bottom-6 left-0 right-0 z-10">
         {loading ? (
           <div className="flex justify-center p-8">
