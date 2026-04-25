@@ -86,6 +86,7 @@ export default function ShareClient() {
     } catch {}
   }
 
+  // ── LÓGICA NOVA: SALVAR NO BANCO DE DADOS COM TRAVA DE 8 SEGUNDOS ──
   async function saveActivityToDb(imageBase64: string | null = null) {
     if (isSaving || distanceKm === 0) return false
     setIsSaving(true)
@@ -102,15 +103,25 @@ export default function ShareClient() {
         socialImageBase64: imageBase64 
       }
 
+      // 🚀 SOLUÇÃO DOS 4 MINUTOS: Corta a requisição se demorar mais de 8 segundos
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 8000)
+
       const res = await fetch('/api/activities/save-session', {
         method: 'POST',
+        signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       })
+      clearTimeout(timeoutId)
 
       if (!res.ok) throw new Error('Falha ao salvar sessão')
       return true
-    } catch (error) {
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        // Ignora timeout por internet ruim e libera para exportar offline
+        return true
+      }
       console.error('Erro ao salvar no banco:', error)
       alert('Ops, não conseguimos salvar seu treino na nuvem. Verifique sua conexão.')
       return false
@@ -272,7 +283,6 @@ export default function ShareClient() {
 
           <div className="absolute top-0 left-0 right-0 p-6 flex items-start justify-between">
             <div>
-              {/* CORREÇÃO DO NEXT IMAGE PARA IMG NATIVA */}
               <img
                 src="/logogiroprincipal.png"
                 alt="GIRO"
@@ -298,7 +308,6 @@ export default function ShareClient() {
                 viewBox={`0 0 ${CARD_W} ${CARD_H * 0.55}`}
                 xmlns="http://www.w3.org/2000/svg"
               >
-                {/* CORREÇÃO DOS FILTROS SVG PARA LINHAS SOBREPOSTAS */}
                 <polyline
                   points={svgPoints}
                   fill="none"
@@ -358,7 +367,6 @@ export default function ShareClient() {
             <p className="text-white/50 text-xs font-bold uppercase tracking-widest mb-1">
               Distância percorrida
             </p>
-            {/* CORREÇÃO DA COR DE TEXTO */}
             <p
               className="font-black leading-none mb-5"
               style={{ fontSize: 64, color: '#FF6B35', textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}

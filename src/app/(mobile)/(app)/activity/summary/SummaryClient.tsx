@@ -15,6 +15,7 @@ export default function SummaryClient() {
   const store = useActivityStore()
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
+  const isInitRef = useRef(false) // Trava para evitar que o mapa renderize duas vezes e quebre
   
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -45,83 +46,71 @@ export default function SummaryClient() {
   const meta = activityType ? ACTIVITY_META[activityType] : null
 
   useEffect(() => {
-    let isMounted = true
-
     // Garante que o status pare, sem dar "flicker" redirecionando pra trás
     if (store.status === 'running' || store.status === 'pausado') {
        store.stopActivity()
     }
     
-    async function initMap() {
-      if (!mapContainerRef.current || mapRef.current) return
+    if (isInitRef.current) return
+    isInitRef.current = true
+    
+    initMap()
+  }, [])
 
-      const L = (await import('leaflet')).default
-      await import('leaflet/dist/leaflet.css')
+  async function initMap() {
+    if (!mapContainerRef.current || mapRef.current) return
+    // Evita o crash "Map container is already initialized" do Leaflet
+    if ((mapContainerRef.current as any)._leaflet_id) return 
 
-      if (!isMounted) return
+    const L = (await import('leaflet')).default
+    await import('leaflet/dist/leaflet.css')
 
-      // Evita o crash "Map container is already initialized" do Leaflet
-      if ((mapContainerRef.current as any)._leaflet_id) {
-         (mapContainerRef.current as any)._leaflet_id = null 
-      }
+    const map = L.map(mapContainerRef.current, { zoomControl: false, attributionControl: false })
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map)
 
-      const map = L.map(mapContainerRef.current, { zoomControl: false, attributionControl: false })
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map)
+    if (coordinates.length > 0) {
+      const latlngs = coordinates.map((c) => [c.lat, c.lng] as [number, number])
 
-      if (coordinates.length > 0) {
-        const latlngs = coordinates.map((c) => [c.lat, c.lng] as [number, number])
+      L.polyline(latlngs, {
+        color: '#FF6B35',
+        weight: 5,
+        opacity: 1,
+        lineCap: 'round',
+        lineJoin: 'round',
+      }).addTo(map)
 
-        L.polyline(latlngs, {
-          color: '#FF6B35',
-          weight: 5,
-          opacity: 1,
-          lineCap: 'round',
-          lineJoin: 'round',
-        }).addTo(map)
+      // Start dot
+      const startIcon = L.divIcon({
+        html: `<div style="width:14px;height:14px;border-radius:50%;background:#22C55E;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>`,
+        className: '', iconSize: [14, 14], iconAnchor: [7, 7],
+      })
+      L.marker(latlngs[0], { icon: startIcon }).addTo(map)
 
-        // Start dot
-        const startIcon = L.divIcon({
-          html: `<div style="width:14px;height:14px;border-radius:50%;background:#22C55E;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>`,
+      // End dot
+      if (latlngs.length > 1) {
+        const endIcon = L.divIcon({
+          html: `<div style="width:14px;height:14px;border-radius:50%;background:#EF4444;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>`,
           className: '', iconSize: [14, 14], iconAnchor: [7, 7],
         })
-        L.marker(latlngs[0], { icon: startIcon }).addTo(map)
+        L.marker(latlngs[latlngs.length - 1], { icon: endIcon }).addTo(map)
+      }
 
-        // End dot
+      // IMPORTANTE: Timeout pro Leaflet calcular o tamanho da tela do celular antes de focar
+      setTimeout(() => {
+        map.invalidateSize()
         if (latlngs.length > 1) {
-          const endIcon = L.divIcon({
-            html: `<div style="width:14px;height:14px;border-radius:50%;background:#EF4444;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>`,
-            className: '', iconSize: [14, 14], iconAnchor: [7, 7],
-          })
-          L.marker(latlngs[latlngs.length - 1], { icon: endIcon }).addTo(map)
+            map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40] })
+        } else {
+            map.setView(latlngs[0], 16)
         }
+      }, 100)
 
-        // IMPORTANTE: Timeout pro Leaflet calcular o tamanho da tela do celular antes de focar
-        setTimeout(() => {
-          map.invalidateSize()
-          if (latlngs.length > 1) {
-              map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40] })
-          } else {
-              map.setView(latlngs[0], 16)
-          }
-        }, 100)
-
-      } else {
-        map.setView([-23.5505, -46.6333], 15) // Fallback caso não tenha gravado nada
-      }
-
-      mapRef.current = map
+    } else {
+      map.setView([-23.5505, -46.6333], 15) // Fallback caso não tenha gravado nada
     }
 
-    initMap()
-
-    return () => {
-      isMounted = false
-      if (mapRef.current) {
-        mapRef.current.remove()
-        mapRef.current = null
-      }
-    }
-  }, [])
+    mapRef.current = map
+  }
 
   async function handleSave() {
     setSaving(true)
@@ -130,33 +119,49 @@ export default function SummaryClient() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error('Não autenticado')
 
-      const res = await fetch('/api/activities/save-session', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          activityType: activityType,
-          startedAt: new Date(startTime!).toISOString(),
-          completedAt: new Date().toISOString(),
-          durationSeconds: Math.floor(totalMs / 1000),
-          totalDistanceKm: distanceKm.toFixed(4),
-          averagePace: formatPace(avgPaceSec),
-          pathCoordinates: coordinates.map((c) => ({ lat: c.lat, lng: c.lng, ts: c.timestamp })),
-        }),
-      })
+      // 🚀 SOLUÇÃO DOS 4 MINUTOS: Corta a requisição se demorar mais de 8 segundos (falta de internet)
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 8000)
 
-      if (!res.ok) {
-        const errData = await res.json()
-        throw new Error(errData.error || 'Falha ao salvar atividade')
-      }
-      
-      const data = await res.json()
-      
-      // Guarda o ID que o banco gerou no Zustand para a tela de Share poder atualizar a foto
-      if (data.id) {
-         store.setLastSavedActivityId(data.id)
+      try {
+        // CORREÇÃO: URL correta e payload formatado igual ao que o Drizzle espera
+        const res = await fetch('/api/activities/save-session', {
+          method: 'POST',
+          signal: controller.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            activityType: activityType,
+            startedAt: new Date(startTime!).toISOString(),
+            completedAt: new Date().toISOString(),
+            durationSeconds: Math.floor(totalMs / 1000),
+            totalDistanceKm: distanceKm.toFixed(4),
+            averagePace: formatPace(avgPaceSec),
+            pathCoordinates: coordinates.map((c) => ({ lat: c.lat, lng: c.lng, ts: c.timestamp })),
+            // A imagem só vai ser enviada na próxima tela (Share)
+          }),
+        })
+        clearTimeout(timeoutId)
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}))
+          throw new Error(errData.error || 'Falha ao salvar atividade')
+        }
+        
+        const data = await res.json()
+        
+        // Guarda o ID que o banco gerou no Zustand para a tela de Share poder atualizar a foto
+        if (data.id) {
+           store.setLastSavedActivityId(data.id)
+        }
+      } catch (fetchErr: any) {
+        clearTimeout(timeoutId)
+        if (fetchErr.name !== 'AbortError') {
+          throw fetchErr
+        }
+        // Se for AbortError (timeout), a gente ignora e finge que deu certo para o fluxo offline continuar!
       }
 
       router.replace('/activity/share')

@@ -25,7 +25,7 @@ export default function RecordClient() {
   const [autoPauseWarning, setAutoPauseWarning] = useState(false)
   const [showStopModal, setShowStopModal] = useState(false)
 
-  // ESTADO PARA "LIMPAR A TELA"
+  // 🚀 NOVO ESTADO: Tela de transição para evitar o "bug" congelado
   const [isFinishing, setIsFinishing] = useState(false)
 
   // ── Refs ──────────────────────────────────────────────────────────────────
@@ -106,17 +106,9 @@ export default function RecordClient() {
     }
 
     initMap()
-
-    // Limpeza de memória
-    return () => {
-      if (mapRef.current) {
-        mapRef.current.remove()
-        mapRef.current = null
-      }
-    }
   }, [])
 
-  // ── Atualização do Mapa ───────────────────────────────────────────────────
+  // ── Atualização do Mapa (Marcador e Câmera) ───────────────────────────────
   useEffect(() => {
     if (!mapRef.current || !markerRef.current || !polylineRef.current) return
 
@@ -216,27 +208,35 @@ export default function RecordClient() {
 
   useEffect(() => {
     startGpsWatch()
-    return () => { stopGpsWatch() }
+    return () => {
+      stopGpsWatch()
+    }
   }, [startGpsWatch, stopGpsWatch])
 
-  // ── FINALIZAR (LIMPA TELA E NAVEGA) ───────────────────────────────────────
-  useEffect(() => {
-    if (isFinishing) {
-      const finalizeActivity = async () => {
-        await stopGpsWatch()
-        store.stopActivity()
-        // Dá meio segundo para o mapa ser destruído antes de mudar de tela
-        setTimeout(() => {
-          router.replace('/activity/summary')
-        }, 500)
-      }
-      finalizeActivity()
-    }
-  }, [isFinishing, stopGpsWatch, store, router])
-
+  // ── Finalizar Atividade (CORRIGIDO PARA NÃO BUGAR A TELA) ───────────────
   function handleStop() {
+    // 1. Esconde o modal de confirmação e sobe a tela de "Salvando" instantaneamente
     setShowStopModal(false)
-    setIsFinishing(true) // Isso aciona a limpeza total da tela abaixo
+    setIsFinishing(true)
+
+    // 🚀 FORÇA BRUTA: Destrói o mapa no DOM instantaneamente para não ficar "fantasma" por 15s
+    if (mapRef.current) {
+      mapRef.current.remove()
+      mapRef.current = null
+    }
+    const mapEl = document.getElementById('map-container-record')
+    if (mapEl) {
+      mapEl.style.display = 'none'
+      mapEl.innerHTML = ''
+    }
+
+    // 2. Coloca um pequeno delay (setTimeout) para dar tempo do React renderizar a tela preta de salvamento
+    // antes de travarmos o navegador com o router.replace e o desligamento do GPS
+    setTimeout(async () => {
+      await stopGpsWatch()
+      store.stopActivity()
+      router.replace('/activity/summary')
+    }, 150)
   }
 
   function handlePauseResume() {
@@ -259,22 +259,20 @@ export default function RecordClient() {
     gpsAccuracy <= 15 ? '#22C55E' :
     gpsAccuracy <= 30 ? '#EAB308' : '#EF4444'
 
-  // 🚀 O PULO DO GATO DA SUA IDEIA: Se clicou em encerrar, mata o mapa e renderiza SÓ isso
-  if (isFinishing) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center font-[family-name:var(--font-dm)] bg-[#080808]">
-        <div className="w-16 h-16 rounded-full animate-spin mb-6" style={{ border: '4px solid rgba(255,255,255,0.05)', borderTop: '4px solid #E05300' }} />
-        <h2 className="text-white font-black text-2xl animate-pulse">Salvando treino...</h2>
-        <p className="text-white/40 text-sm mt-2 font-medium">Preparando suas estatísticas</p>
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen flex flex-col font-[family-name:var(--font-dm)] select-none relative" style={{ background: '#080808' }}>
       
+      {/* 🚀 OVERLAY DE TRANSIÇÃO (SALVANDO ATIVIDADE) */}
+      {isFinishing && (
+        <div className="absolute inset-0 z-[9999] flex flex-col items-center justify-center bg-[#080808]">
+          <div className="w-16 h-16 rounded-full animate-spin mb-6" style={{ border: '4px solid rgba(255,255,255,0.05)', borderTop: '4px solid #E05300' }} />
+          <h2 className="text-white font-black text-2xl animate-pulse">Salvando treino...</h2>
+          <p className="text-white/40 text-sm mt-2 font-medium">Preparando suas estatísticas</p>
+        </div>
+      )}
+
       {/* Modal de Confirmação */}
-      {showStopModal && (
+      {showStopModal && !isFinishing && (
         <div className="absolute inset-0 z-[100] flex items-center justify-center px-6 bg-black/80 backdrop-blur-sm">
           <div className="bg-[#1A1A1A] border border-white/10 rounded-3xl p-6 w-full max-w-sm shadow-2xl">
             <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4">
@@ -303,7 +301,7 @@ export default function RecordClient() {
       )}
 
       {/* Auto-pause banner */}
-      {autoPauseWarning && (
+      {autoPauseWarning && !isFinishing && (
         <div className="absolute top-14 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-full flex items-center gap-2 shadow-xl"
           style={{ background: '#1A1A1A', border: '1px solid rgba(255,255,255,0.1)' }}>
           <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
@@ -382,7 +380,7 @@ export default function RecordClient() {
 
       {/* ── Live map ───────────────────────────────────────────────────── */}
       <div className="flex-1 mx-5 rounded-3xl overflow-hidden relative" style={{ minHeight: 200 }}>
-        <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
+        <div id="map-container-record" ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
 
         {status === 'idle' && (
           <div
