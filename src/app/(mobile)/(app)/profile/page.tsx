@@ -1,3 +1,4 @@
+// src/app/(mobile)/(app)/profile/page.tsx
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -239,7 +240,7 @@ export default function ProfilePage() {
       <div className="flex mx-5 mt-2 rounded-2xl overflow-hidden border border-gray-100 bg-white mb-4 shadow-sm">
         {(['routes', 'badges'] as const).map((tab) => (
           <button key={tab} onClick={() => setActiveTab(tab)} className="flex-1 py-3 text-[11px] font-black transition-all" style={{ color: activeTab === tab ? 'white' : '#999', background: activeTab === tab ? 'linear-gradient(135deg, #830200, #E05300)' : 'transparent' }}>
-            {tab === 'routes' ? '🗺️ HISTÓRICO DE ROTAS' : '🏆 SUAS CONQUISTAS'}
+            {tab === 'routes' ? '🗺️ HISTÓRICO' : '🏆 CONQUISTAS'}
           </button>
         ))}
       </div>
@@ -247,38 +248,66 @@ export default function ProfilePage() {
       <div className="px-5">
         {activeTab === 'routes' && (
           <div className="flex flex-col gap-4">
-            {profile?.completedRoutes.map(route => {
-              const info = getTypeInfo(route.routeType)
-              return (
-                <div key={route.id} className="bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-100">
-                  <div className="px-5 pt-4 pb-3 flex justify-between items-start border-b border-gray-50">
-                    <div>
-                      <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md mb-1.5 ${info.color}`}><span className="text-[10px]">{info.icon}</span><span className="text-[9px] font-bold uppercase tracking-wider">{info.label}</span></div>
-                      <h3 className="font-black text-gray-900 text-lg leading-tight">{route.routeName}</h3>
-                      <p className="text-gray-400 text-xs mt-1 font-medium">{new Date(route.completedAt).toLocaleDateString('pt-BR')}</p>
+            {profile?.completedRoutes.length === 0 ? (
+               <div className="py-12 text-center">
+                 <p className="text-gray-400 font-bold text-sm uppercase tracking-widest">Nenhuma rota concluída</p>
+               </div>
+            ) : (
+              profile?.completedRoutes.map(route => {
+                const info = getTypeInfo(route.routeType)
+                return (
+                  <div key={route.id} className="bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-100">
+                    <div className="px-5 pt-4 pb-3 flex justify-between items-start border-b border-gray-50">
+                      <div>
+                        <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md mb-1.5 ${info.color}`}><span className="text-[10px]">{info.icon}</span><span className="text-[9px] font-bold uppercase tracking-wider">{info.label}</span></div>
+                        <h3 className="font-black text-gray-900 text-lg leading-tight">{route.routeName}</h3>
+                        <p className="text-gray-400 text-xs mt-1 font-medium">{new Date(route.completedAt).toLocaleDateString('pt-BR')}</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 divide-x divide-gray-50 bg-gray-50/30 py-3 border-b border-gray-50">
+                      <div className="text-center"><p className="text-[9px] font-bold text-gray-400 uppercase">Tempo</p><p className="font-black text-gray-800">{formatTime(route.elapsedMinutes)}</p></div>
+                      <div className="text-center"><p className="text-[9px] font-bold text-gray-400 uppercase">Distância</p><p className="font-black text-gray-800">{route.distanceKm} km</p></div>
+                    </div>
+                    <div className="px-5 py-4">
+                      <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+                        {route.photos.map((p, i) => (
+                          <button key={i} onClick={() => openPhotoViewer(p)} className="relative w-20 h-20 flex-shrink-0 active:scale-95"><img src={p} className="w-full h-full rounded-2xl object-cover border-2 border-white shadow-md" /></button>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 divide-x divide-gray-50 bg-gray-50/30 py-3 border-b border-gray-50">
-                    <div className="text-center"><p className="text-[9px] font-bold text-gray-400 uppercase">Tempo</p><p className="font-black text-gray-800">{formatTime(route.elapsedMinutes)}</p></div>
-                    <div className="text-center"><p className="text-[9px] font-bold text-gray-400 uppercase">Distância</p><p className="font-black text-gray-800">{route.distanceKm} km</p></div>
-                  </div>
-                  <div className="px-5 py-4">
-                    <div className="flex gap-2 overflow-x-auto scrollbar-hide">
-                      {route.photos.map((p, i) => (
-                        <button key={i} onClick={() => openPhotoViewer(p)} className="relative w-20 h-20 flex-shrink-0 active:scale-95"><img src={p} className="w-full h-full rounded-2xl object-cover border-2 border-white shadow-md" /></button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
+                )
+              })
+            )}
           </div>
         )}
+        
+        {/* ABA DE INSÍGNIAS (VISUAL PREMIUM 3D) */}
         {activeTab === 'badges' && (
-          <div className="grid grid-cols-3 gap-3">
-            {profile?.badges.map(b => (
-              <div key={b.id} className="bg-white rounded-2xl p-3 text-center shadow-sm border border-gray-50"><img src={b.imageUrl} className="w-12 h-12 mx-auto mb-2 object-contain" /><p className="text-[10px] font-black text-gray-900 leading-tight uppercase line-clamp-2">{b.name}</p></div>
-            ))}
+          <div className="grid grid-cols-2 gap-4">
+            {profile?.badges.length === 0 ? (
+               <div className="col-span-2 py-12 text-center">
+                 <div className="text-4xl mb-3 grayscale opacity-30">🏅</div>
+                 <p className="text-gray-400 font-bold text-sm uppercase tracking-widest">Sem insígnias ainda</p>
+                 <p className="text-gray-400 text-xs mt-1">Conclua rotas para ganhar.</p>
+               </div>
+            ) : (
+              profile?.badges.map(b => (
+                <div key={b.id} className="relative bg-white rounded-3xl p-5 text-center shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-orange-50 flex flex-col items-center justify-center overflow-hidden group">
+                  <div className="absolute inset-0 bg-gradient-to-b from-orange-50/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                  
+                  {/* Container da Imagem com efeito Glow/Glass */}
+                  <div className="relative w-20 h-20 mb-3 rounded-[24px] bg-gradient-to-br from-gray-50 to-gray-100 shadow-inner flex items-center justify-center p-2 border border-white z-10">
+                    <img src={b.imageUrl} className="w-full h-full object-contain drop-shadow-md transition-transform duration-500 group-hover:scale-110 group-hover:drop-shadow-xl" />
+                  </div>
+                  
+                  <p className="text-[11px] font-black text-gray-900 leading-tight uppercase tracking-widest z-10">{b.name}</p>
+                  {b.description && (
+                    <p className="text-[10px] text-gray-400 mt-1.5 font-medium leading-snug z-10">{b.description}</p>
+                  )}
+                </div>
+              ))
+            )}
           </div>
         )}
       </div>

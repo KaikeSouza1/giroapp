@@ -15,6 +15,10 @@ type UserProfile = {
   username: string
   avatarUrl: string | null
   isSelfieCaptured: boolean
+  // Novos campos que a API agora retorna:
+  routesCompleted?: number
+  badgesCount?: number
+  photosCount?: number
 }
 
 type Route = {
@@ -191,9 +195,10 @@ export default function HomePage() {
 
         <div className="relative z-10 flex gap-3 mt-6">
           {[
-            { label: 'Rotas feitas', value: '0' },
-            { label: 'Insígnias', value: '0' },
-            { label: 'Conclusões', value: '0' },
+            // Aqui aplicamos as variáveis reais puxadas da API
+            { label: 'Rotas concluídas', value: user?.routesCompleted ?? 0 },
+            { label: 'Insígnias', value: user?.badgesCount ?? 0 },
+            { label: 'Fotos tiradas', value: user?.photosCount ?? 0 },
           ].map((stat) => (
             <div
               key={stat.label}
@@ -242,7 +247,6 @@ export default function HomePage() {
 
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-black text-gray-900">Rotas Criadas por Orgs</h2>
-          {/* LINK ATUALIZADO AQUI */}
           <Link href="/map" className="text-xs font-bold active:scale-95 transition-transform" style={{ color: '#E05300' }}>
             Explorar Mapa →
           </Link>
