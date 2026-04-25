@@ -17,7 +17,6 @@ export default function RecordClient() {
   const router = useRouter()
   const store = useActivityStore()
 
-  // ── Local UI state ────────────────────────────────────────────────────────
   const [elapsedMs, setElapsedMs] = useState(0)
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null)
   const [currentLoc, setCurrentLoc] = useState<{lat: number, lng: number} | null>(null)
@@ -26,7 +25,6 @@ export default function RecordClient() {
   const [showStopModal, setShowStopModal] = useState(false)
   const [isFinishing, setIsFinishing] = useState(false)
 
-  // ── Refs ──────────────────────────────────────────────────────────────────
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const polylineRef = useRef<any>(null)
@@ -45,7 +43,6 @@ export default function RecordClient() {
     }
   }, [activityType, router])
 
-  // ── Elapsed timer ─────────────────────────────────────────────────────────
   useEffect(() => {
     timerRef.current = setInterval(() => {
       setElapsedMs(getElapsedMs(startTime, pausedDuration, pauseStartTime))
@@ -55,15 +52,25 @@ export default function RecordClient() {
     }
   }, [startTime, pausedDuration, pauseStartTime])
 
-  // ── Leaflet map init ──────────────────────────────────────────────────────
+  // ── CORREÇÃO DO CRASH DO MAPA (RACE CONDITION) ──────────────────────────
   useEffect(() => {
-    if (!mapContainerRef.current || mapRef.current) return
+    let isMounted = true
 
     async function initMap() {
+      if (!mapContainerRef.current || mapRef.current) return
+
       const L = (await import('leaflet')).default
       await import('leaflet/dist/leaflet.css')
 
-      const map = L.map(mapContainerRef.current!, {
+      // Se o componente foi desmontado enquanto o leaflet baixava, aborta!
+      if (!isMounted) return
+
+      // Limpeza nuclear para evitar o erro de container initialized
+      if ((mapContainerRef.current as any)._leaflet_id) {
+         (mapContainerRef.current as any)._leaflet_id = null
+      }
+
+      const map = L.map(mapContainerRef.current, {
         center: [-23.5505, -46.6333],
         zoom: 16,
         zoomControl: false,
@@ -105,8 +112,8 @@ export default function RecordClient() {
 
     initMap()
 
-    // LIMPEZA DA MEMÓRIA PARA EVITAR TRAVAMENTO DE TELA
     return () => {
+      isMounted = false
       if (mapRef.current) {
         mapRef.current.remove()
         mapRef.current = null
@@ -115,7 +122,6 @@ export default function RecordClient() {
     }
   }, [])
 
-  // ── Atualização do Mapa (Marcador e Câmera) ───────────────────────────────
   useEffect(() => {
     if (!mapRef.current || !markerRef.current || !polylineRef.current) return
 
@@ -135,7 +141,6 @@ export default function RecordClient() {
     }
   }, [coordinates.length, currentLoc])
 
-  // ── GPS watch ─────────────────────────────────────────────────────────────
   const startGpsWatch = useCallback(async () => {
     try {
       const { Geolocation } = await import('@capacitor/geolocation')
@@ -224,11 +229,12 @@ export default function RecordClient() {
     setShowStopModal(false)
     setIsFinishing(true)
 
+    // Aumentei o delay para garantir que o router tenha respiro e não trave a thread
     setTimeout(() => {
-      stopGpsWatch() // Sem await para não bloquear o roteador
+      stopGpsWatch()
       store.stopActivity()
       router.replace('/activity/summary')
-    }, 150)
+    }, 250)
   }
 
   function handlePauseResume() {
@@ -254,7 +260,6 @@ export default function RecordClient() {
   return (
     <div className="min-h-screen flex flex-col font-[family-name:var(--font-dm)] select-none relative" style={{ background: '#080808' }}>
       
-      {/* 🚀 OVERLAY COM Z-INDEX 9999 CORRIGIDO */}
       {isFinishing && (
         <div className="absolute inset-0 z-[9999] flex flex-col items-center justify-center bg-[#080808]">
           <div className="w-16 h-16 rounded-full animate-spin mb-6" style={{ border: '4px solid rgba(255,255,255,0.05)', borderTop: '4px solid #E05300' }} />

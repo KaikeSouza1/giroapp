@@ -43,71 +43,82 @@ export default function SummaryClient() {
   const avgSpeedKmH = totalMs > 0 ? distanceKm / (totalMs / 3_600_000) : 0
   const meta = activityType ? ACTIVITY_META[activityType] : null
 
+  // ── CORREÇÃO DO CRASH DO MAPA NA TELA DE SUMÁRIO ────────────────────────
   useEffect(() => {
+    let isMounted = true
+
     if (store.status === 'running' || store.status === 'pausado') {
        store.stopActivity()
     }
     
+    async function initMap() {
+      if (!mapContainerRef.current || mapRef.current) return
+
+      const L = (await import('leaflet')).default
+      await import('leaflet/dist/leaflet.css')
+
+      // Previne execução se o Next.js já tiver desmontado a tela durante o await
+      if (!isMounted) return
+
+      // Limpeza nuclear para evitar o erro de container initialized do Leaflet
+      if ((mapContainerRef.current as any)._leaflet_id) {
+         (mapContainerRef.current as any)._leaflet_id = null
+      }
+
+      const map = L.map(mapContainerRef.current, { zoomControl: false, attributionControl: false })
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map)
+
+      if (coordinates.length > 0) {
+        const latlngs = coordinates.map((c) => [c.lat, c.lng] as [number, number])
+
+        L.polyline(latlngs, {
+          color: '#FF6B35',
+          weight: 5,
+          opacity: 1,
+          lineCap: 'round',
+          lineJoin: 'round',
+        }).addTo(map)
+
+        const startIcon = L.divIcon({
+          html: `<div style="width:14px;height:14px;border-radius:50%;background:#22C55E;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>`,
+          className: '', iconSize: [14, 14], iconAnchor: [7, 7],
+        })
+        L.marker(latlngs[0], { icon: startIcon }).addTo(map)
+
+        if (latlngs.length > 1) {
+          const endIcon = L.divIcon({
+            html: `<div style="width:14px;height:14px;border-radius:50%;background:#EF4444;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>`,
+            className: '', iconSize: [14, 14], iconAnchor: [7, 7],
+          })
+          L.marker(latlngs[latlngs.length - 1], { icon: endIcon }).addTo(map)
+        }
+
+        setTimeout(() => {
+          map.invalidateSize()
+          if (latlngs.length > 1) {
+              map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40] })
+          } else {
+              map.setView(latlngs[0], 16)
+          }
+        }, 100)
+
+      } else {
+        map.setView([-23.5505, -46.6333], 15)
+      }
+
+      mapRef.current = map
+    }
+
     initMap()
 
-    // LIMPEZA DA INSTÂNCIA DO MAPA
     return () => {
+      isMounted = false
       if (mapRef.current) {
         mapRef.current.remove()
         mapRef.current = null
       }
     }
   }, [])
-
-  async function initMap() {
-    if (!mapContainerRef.current || mapRef.current) return
-
-    const L = (await import('leaflet')).default
-    await import('leaflet/dist/leaflet.css')
-
-    const map = L.map(mapContainerRef.current, { zoomControl: false, attributionControl: false })
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map)
-
-    if (coordinates.length > 0) {
-      const latlngs = coordinates.map((c) => [c.lat, c.lng] as [number, number])
-
-      L.polyline(latlngs, {
-        color: '#FF6B35',
-        weight: 5,
-        opacity: 1,
-        lineCap: 'round',
-        lineJoin: 'round',
-      }).addTo(map)
-
-      const startIcon = L.divIcon({
-        html: `<div style="width:14px;height:14px;border-radius:50%;background:#22C55E;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>`,
-        className: '', iconSize: [14, 14], iconAnchor: [7, 7],
-      })
-      L.marker(latlngs[0], { icon: startIcon }).addTo(map)
-
-      if (latlngs.length > 1) {
-        const endIcon = L.divIcon({
-          html: `<div style="width:14px;height:14px;border-radius:50%;background:#EF4444;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>`,
-          className: '', iconSize: [14, 14], iconAnchor: [7, 7],
-        })
-        L.marker(latlngs[latlngs.length - 1], { icon: endIcon }).addTo(map)
-      }
-
-      setTimeout(() => {
-        map.invalidateSize()
-        if (latlngs.length > 1) {
-            map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40] })
-        } else {
-            map.setView(latlngs[0], 16)
-        }
-      }, 100)
-
-    } else {
-      map.setView([-23.5505, -46.6333], 15)
-    }
-
-    mapRef.current = map
-  }
 
   async function handleSave() {
     setSaving(true)
