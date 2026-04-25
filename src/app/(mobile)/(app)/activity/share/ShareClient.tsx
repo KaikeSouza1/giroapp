@@ -1,8 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import NextImage from 'next/image'
 import { Capacitor } from '@capacitor/core'
 import {
   useActivityStore,
@@ -12,7 +11,6 @@ import {
   Coordinate,
 } from '@/store/activityStore'
 
-// ── SVG neon route renderer ───────────────────────────────────────────────────
 function routeToSvgPath(coords: Coordinate[], width: number, height: number, padding = 40): string {
   if (coords.length < 2) return ''
 
@@ -35,7 +33,7 @@ function routeToSvgPath(coords: Coordinate[], width: number, height: number, pad
 
   const points = coords.map((c) => {
     const x = (c.lng - minLng) * scale + offsetX
-    const y = height - ((c.lat - minLat) * scale + offsetY) // flip Y
+    const y = height - ((c.lat - minLat) * scale + offsetY) 
     return `${x.toFixed(1)},${y.toFixed(1)}`
   })
 
@@ -50,27 +48,17 @@ export default function ShareClient() {
   const [bgPhoto, setBgPhoto] = useState<string | null>(null)
   const [isExporting, setIsExporting] = useState(false)
   const [exported, setExported] = useState(false)
-  
-  // NOVO: Estado para controlar o salvamento no banco
   const [isSaving, setIsSaving] = useState(false)
 
-  const {
-    activityType,
-    coordinates,
-    startTime,
-    pausedDuration,
-    distanceKm,
-  } = store
+  const { activityType, coordinates, startTime, pausedDuration, distanceKm } = store
 
   const totalMs = startTime ? Date.now() - startTime - pausedDuration : 0
-  const durationSeconds = Math.floor(totalMs / 1000) // NOVO: Tempo em segundos para o banco
+  const durationSeconds = Math.floor(totalMs / 1000)
   const avgPaceSec = distanceKm > 0 ? totalMs / 1000 / distanceKm : 0
   const meta = activityType ? ACTIVITY_META[activityType] : null
 
-  // SVG dimensions for the share card (9:16 ratio)
   const CARD_W = 390
   const CARD_H = 693
-
   const svgPoints = routeToSvgPath(coordinates, CARD_W, CARD_H * 0.55, 30)
 
   async function takeBgPhoto() {
@@ -98,7 +86,6 @@ export default function ShareClient() {
     } catch {}
   }
 
-  // ── LÓGICA NOVA: SALVAR NO BANCO DE DADOS ──
   async function saveActivityToDb(imageBase64: string | null = null) {
     if (isSaving || distanceKm === 0) return false
     setIsSaving(true)
@@ -142,15 +129,14 @@ export default function ShareClient() {
       const canvas = await html2canvas(shareCardRef.current, {
         useCORS: true,
         allowTaint: true,
-        scale: 2,
-        backgroundColor: '#080808',
+        scale: 3, // Aumenta a qualidade
+        backgroundColor: '#0A0A0A',
         logging: false,
       })
 
       const dataUrl = canvas.toDataURL('image/png')
       const base64 = dataUrl.split(',')[1]
 
-      // NOVO: Salva no banco antes de exportar
       if (!exported) {
         await saveActivityToDb(base64)
       }
@@ -175,7 +161,6 @@ export default function ShareClient() {
           files: [uri],
         })
       } else {
-        // Web fallback: download
         const link = document.createElement('a')
         link.download = 'giro-activity.png'
         link.href = dataUrl
@@ -191,12 +176,11 @@ export default function ShareClient() {
   }
 
   async function handleFinish() {
-    // NOVO: Garante que salva no banco mesmo se ele pular a foto
     if (!exported) {
       await saveActivityToDb(null)
     }
     store.resetActivity()
-    router.replace('/feed') // NOVO: Redireciona pro feed pra ver o post
+    router.replace('/feed') 
   }
 
   if (!meta) return null
@@ -206,7 +190,6 @@ export default function ShareClient() {
       className="min-h-screen flex flex-col font-[family-name:var(--font-dm)]"
       style={{ background: '#080808' }}
     >
-      {/* Header */}
       <div className="px-5 pt-12 pb-4 flex items-center justify-between">
         <div>
           <p className="text-white/40 text-xs uppercase tracking-widest font-bold mb-0.5">Criar Post</p>
@@ -222,7 +205,6 @@ export default function ShareClient() {
         </button>
       </div>
 
-      {/* Photo source buttons */}
       {!bgPhoto && (
         <div className="px-5 mb-4 flex gap-3">
           <button
@@ -242,7 +224,6 @@ export default function ShareClient() {
         </div>
       )}
 
-      {/* ── Share Card Preview ─────────────────────────────────────────────── */}
       <div className="flex justify-center px-5">
         <div
           ref={shareCardRef}
@@ -254,7 +235,6 @@ export default function ShareClient() {
             background: '#0A0A0A',
           }}
         >
-          {/* Background photo */}
           {bgPhoto ? (
             <img
               src={bgPhoto}
@@ -270,7 +250,6 @@ export default function ShareClient() {
             />
           )}
 
-          {/* Dark overlay */}
           <div
             className="absolute inset-0"
             style={{
@@ -280,7 +259,6 @@ export default function ShareClient() {
             }}
           />
 
-          {/* Grid pattern (subtle) */}
           {!bgPhoto && (
             <svg className="absolute inset-0 w-full h-full opacity-5" xmlns="http://www.w3.org/2000/svg">
               <defs>
@@ -292,10 +270,10 @@ export default function ShareClient() {
             </svg>
           )}
 
-          {/* Top: Logo + Activity type */}
           <div className="absolute top-0 left-0 right-0 p-6 flex items-start justify-between">
             <div>
-              <NextImage
+              {/* CORREÇÃO DO NEXT IMAGE PARA IMG NATIVA */}
+              <img
                 src="/logogiroprincipal.png"
                 alt="GIRO"
                 width={70}
@@ -305,14 +283,13 @@ export default function ShareClient() {
             </div>
             <div
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full"
-              style={{ background: 'rgba(224,83,0,0.85)', backdropFilter: 'blur(8px)' }}
+              style={{ background: 'rgba(224,83,0,0.85)' }}
             >
               <span className="text-sm">{meta.emoji}</span>
               <p className="text-white text-xs font-black">{meta.label}</p>
             </div>
           </div>
 
-          {/* Center: Neon SVG route */}
           <div className="absolute inset-0 flex items-center justify-center" style={{ top: '15%', bottom: '30%' }}>
             {coordinates.length > 1 ? (
               <svg
@@ -321,56 +298,32 @@ export default function ShareClient() {
                 viewBox={`0 0 ${CARD_W} ${CARD_H * 0.55}`}
                 xmlns="http://www.w3.org/2000/svg"
               >
-                <defs>
-                  <filter id="neon">
-                    <feGaussianBlur stdDeviation="6" result="blur1" />
-                    <feGaussianBlur stdDeviation="2" result="blur2" />
-                    <feMerge>
-                      <feMergeNode in="blur1" />
-                      <feMergeNode in="blur2" />
-                      <feMergeNode in="SourceGraphic" />
-                    </feMerge>
-                  </filter>
-                  <filter id="neon-subtle">
-                    <feGaussianBlur stdDeviation="3" result="blur" />
-                    <feMerge>
-                      <feMergeNode in="blur" />
-                      <feMergeNode in="SourceGraphic" />
-                    </feMerge>
-                  </filter>
-                </defs>
-
-                {/* Glow layer */}
+                {/* CORREÇÃO DOS FILTROS SVG PARA LINHAS SOBREPOSTAS */}
                 <polyline
                   points={svgPoints}
                   fill="none"
-                  stroke="rgba(255,107,53,0.4)"
-                  strokeWidth="12"
+                  stroke="rgba(255,107,53,0.3)"
+                  strokeWidth="16"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  filter="url(#neon)"
                 />
-                {/* Main line */}
                 <polyline
                   points={svgPoints}
                   fill="none"
-                  stroke="#FF6B35"
-                  strokeWidth="3.5"
+                  stroke="rgba(255,107,53,0.6)"
+                  strokeWidth="8"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  filter="url(#neon-subtle)"
                 />
-                {/* White core */}
                 <polyline
                   points={svgPoints}
                   fill="none"
-                  stroke="rgba(255,255,255,0.9)"
-                  strokeWidth="1.5"
+                  stroke="#FFFFFF"
+                  strokeWidth="2.5"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
 
-                {/* Start dot */}
                 {svgPoints && (() => {
                   const first = svgPoints.split(' ')[0]?.split(',')
                   if (!first) return null
@@ -382,7 +335,6 @@ export default function ShareClient() {
                   )
                 })()}
 
-                {/* End dot */}
                 {svgPoints && (() => {
                   const pts = svgPoints.split(' ')
                   const last = pts[pts.length - 1]?.split(',')
@@ -402,31 +354,24 @@ export default function ShareClient() {
             )}
           </div>
 
-          {/* Bottom: Stats */}
           <div className="absolute bottom-0 left-0 right-0 p-6">
-            {/* Main stat */}
             <p className="text-white/50 text-xs font-bold uppercase tracking-widest mb-1">
               Distância percorrida
             </p>
+            {/* CORREÇÃO DA COR DE TEXTO */}
             <p
               className="font-black leading-none mb-5"
-              style={{
-                fontSize: 64,
-                background: 'linear-gradient(135deg, #FF6B35, #FF8C00)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-              }}
+              style={{ fontSize: 64, color: '#FF6B35', textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}
             >
               {distanceKm.toFixed(2)}
-              <span className="text-2xl ml-1" style={{ WebkitTextFillColor: 'rgba(255,255,255,0.4)' }}>
+              <span className="text-2xl ml-1" style={{ color: 'rgba(255,255,255,0.8)' }}>
                 km
               </span>
             </p>
 
-            {/* Stats row */}
             <div
               className="flex rounded-2xl overflow-hidden"
-              style={{ background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(12px)' }}
+              style={{ background: 'rgba(255,255,255,0.1)' }}
             >
               {[
                 { label: 'Tempo', value: formatElapsed(totalMs) },
@@ -450,7 +395,6 @@ export default function ShareClient() {
         </div>
       </div>
 
-      {/* Photo swap button */}
       {bgPhoto && (
         <div className="flex justify-center mt-3 gap-3 px-5">
           <button
@@ -470,7 +414,6 @@ export default function ShareClient() {
         </div>
       )}
 
-      {/* Export button */}
       <div className="px-5 mt-5 pb-12 flex flex-col gap-3">
         <button
           onClick={handleExportAndShare}

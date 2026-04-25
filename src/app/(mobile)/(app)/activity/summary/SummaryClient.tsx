@@ -15,10 +15,7 @@ export default function SummaryClient() {
   const store = useActivityStore()
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
-  // Proteção dupla: ref + flag para evitar double-init do Leaflet
-  const mapInitializedRef = useRef(false)
-  const isMountedRef = useRef(true)
-
+  
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -33,74 +30,43 @@ export default function SummaryClient() {
     startTime,
     pausedDuration,
     distanceKm,
+    currentPaceSecPerKm,
   } = store
 
   const totalMs = startTime
-    ? (store.pauseStartTime ? store.pauseStartTime : Date.now()) -
-      startTime -
-      pausedDuration
+    ? (store.pauseStartTime
+        ? store.pauseStartTime
+        : Date.now()) - startTime - pausedDuration
     : 0
 
   const avgPaceSec = distanceKm > 0 ? totalMs / 1000 / distanceKm : 0
   const avgSpeedKmH = totalMs > 0 ? distanceKm / (totalMs / 3_600_000) : 0
   const meta = activityType ? ACTIVITY_META[activityType] : null
 
-  // Garante que a atividade está parada ao entrar nesta tela
   useEffect(() => {
-    const currentStatus = useActivityStore.getState().status
-    if (currentStatus === 'running' || currentStatus === 'pausado') {
-      useActivityStore.getState().stopActivity()
+    if (store.status === 'running' || store.status === 'pausado') {
+       store.stopActivity()
     }
-  }, [])
+    
+    initMap()
 
-  // Inicializa o mapa — separado do efeito acima para evitar conflito
-  useEffect(() => {
-    isMountedRef.current = true
-
-    // Aguarda o próximo frame para garantir que o DOM está pronto
-    const frameId = requestAnimationFrame(() => {
-      if (isMountedRef.current) initMap()
-    })
-
+    // LIMPEZA DA INSTÂNCIA DO MAPA
     return () => {
-      isMountedRef.current = false
-      cancelAnimationFrame(frameId)
-      // Destrói o mapa ao desmontar para evitar "container already initialized"
       if (mapRef.current) {
-        try {
-          mapRef.current.remove()
-        } catch {}
+        mapRef.current.remove()
         mapRef.current = null
       }
-      mapInitializedRef.current = false
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function initMap() {
-    // Triple-check: não inicializa se já foi, se o elemento não existe, ou se foi desmontado
-    if (mapInitializedRef.current) return
-    if (!mapContainerRef.current) return
-    if (!isMountedRef.current) return
-
-    // Verifica flag nativa do Leaflet
-    if ((mapContainerRef.current as any)._leaflet_id) return
-
-    mapInitializedRef.current = true
+    if (!mapContainerRef.current || mapRef.current) return
 
     const L = (await import('leaflet')).default
     await import('leaflet/dist/leaflet.css')
 
-    if (!isMountedRef.current || !mapContainerRef.current) return
-
-    const map = L.map(mapContainerRef.current, {
-      zoomControl: false,
-      attributionControl: false,
-    })
-
-    L.tileLayer(
-      'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-    ).addTo(map)
+    const map = L.map(mapContainerRef.current, { zoomControl: false, attributionControl: false })
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map)
 
     if (coordinates.length > 0) {
       const latlngs = coordinates.map((c) => [c.lat, c.lng] as [number, number])
@@ -115,31 +81,27 @@ export default function SummaryClient() {
 
       const startIcon = L.divIcon({
         html: `<div style="width:14px;height:14px;border-radius:50%;background:#22C55E;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>`,
-        className: '',
-        iconSize: [14, 14],
-        iconAnchor: [7, 7],
+        className: '', iconSize: [14, 14], iconAnchor: [7, 7],
       })
       L.marker(latlngs[0], { icon: startIcon }).addTo(map)
 
       if (latlngs.length > 1) {
         const endIcon = L.divIcon({
           html: `<div style="width:14px;height:14px;border-radius:50%;background:#EF4444;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>`,
-          className: '',
-          iconSize: [14, 14],
-          iconAnchor: [7, 7],
+          className: '', iconSize: [14, 14], iconAnchor: [7, 7],
         })
         L.marker(latlngs[latlngs.length - 1], { icon: endIcon }).addTo(map)
       }
 
       setTimeout(() => {
-        if (!isMountedRef.current || !map) return
         map.invalidateSize()
         if (latlngs.length > 1) {
-          map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40] })
+            map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40] })
         } else {
-          map.setView(latlngs[0], 16)
+            map.setView(latlngs[0], 16)
         }
-      }, 150)
+      }, 100)
+
     } else {
       map.setView([-23.5505, -46.6333], 15)
     }
@@ -151,9 +113,7 @@ export default function SummaryClient() {
     setSaving(true)
     setError('')
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
+      const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error('Não autenticado')
 
       const res = await fetch('/api/activities/save-session', {
@@ -169,11 +129,7 @@ export default function SummaryClient() {
           durationSeconds: Math.floor(totalMs / 1000),
           totalDistanceKm: distanceKm.toFixed(4),
           averagePace: formatPace(avgPaceSec),
-          pathCoordinates: coordinates.map((c) => ({
-            lat: c.lat,
-            lng: c.lng,
-            ts: c.timestamp,
-          })),
+          pathCoordinates: coordinates.map((c) => ({ lat: c.lat, lng: c.lng, ts: c.timestamp })),
         }),
       })
 
@@ -181,10 +137,11 @@ export default function SummaryClient() {
         const errData = await res.json()
         throw new Error(errData.error || 'Falha ao salvar atividade')
       }
-
+      
       const data = await res.json()
+      
       if (data.id) {
-        store.setLastSavedActivityId(data.id)
+         store.setLastSavedActivityId(data.id)
       }
 
       router.replace('/activity/share')
@@ -206,14 +163,10 @@ export default function SummaryClient() {
       className="min-h-screen flex flex-col font-[family-name:var(--font-dm)]"
       style={{ background: '#080808' }}
     >
-      {/* ── Header ───────────────────────────────────────────────────────── */}
       <div className="relative overflow-hidden px-5 pt-12 pb-6">
         <div
           className="absolute inset-0"
-          style={{
-            background:
-              'radial-gradient(ellipse 80% 60% at 50% -10%, rgba(34,197,94,0.2) 0%, transparent 70%)',
-          }}
+          style={{ background: 'radial-gradient(ellipse 80% 60% at 50% -10%, rgba(34,197,94,0.2) 0%, transparent 70%)' }}
         />
         <p className="relative text-white/40 text-xs uppercase tracking-widest font-bold mb-1">
           {meta.emoji} Atividade Concluída
@@ -231,16 +184,11 @@ export default function SummaryClient() {
         <p className="relative text-white/40 text-sm font-semibold mt-1">{meta.label}</p>
       </div>
 
-      {/* ── Mapa ─────────────────────────────────────────────────────────── */}
-      <div
-        className="mx-5 rounded-3xl overflow-hidden relative"
-        style={{ height: 220 }}
-      >
+      <div className="mx-5 rounded-3xl overflow-hidden relative" style={{ height: 220 }}>
         <div className="absolute inset-0 bg-[#111]" />
         <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
       </div>
 
-      {/* ── Stats ────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3 px-5 mt-4">
         {[
           { label: 'Distância', value: `${distanceKm.toFixed(2)} km`, icon: '📏' },
@@ -251,16 +199,11 @@ export default function SummaryClient() {
           <div
             key={s.label}
             className="rounded-2xl p-4"
-            style={{
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.07)',
-            }}
+            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.07)' }}
           >
             <p className="text-xl mb-1">{s.icon}</p>
             <p className="text-white font-black text-xl leading-none">{s.value}</p>
-            <p className="text-white/30 text-[10px] font-bold uppercase tracking-wider mt-1">
-              {s.label}
-            </p>
+            <p className="text-white/30 text-[10px] font-bold uppercase tracking-wider mt-1">{s.label}</p>
           </div>
         ))}
       </div>
@@ -271,16 +214,12 @@ export default function SummaryClient() {
         </div>
       )}
 
-      {/* ── Ações ────────────────────────────────────────────────────────── */}
       <div className="px-5 mt-6 pb-12 flex flex-col gap-3">
         <button
           onClick={handleSave}
           disabled={saving}
           className="w-full py-4 rounded-2xl text-white font-black text-base flex items-center justify-center gap-2 disabled:opacity-50"
-          style={{
-            background: 'linear-gradient(135deg, #830200, #E05300)',
-            boxShadow: '0 8px 28px rgba(224,83,0,0.35)',
-          }}
+          style={{ background: 'linear-gradient(135deg, #830200, #E05300)', boxShadow: '0 8px 28px rgba(224,83,0,0.35)' }}
         >
           {saving ? (
             <>
@@ -289,14 +228,7 @@ export default function SummaryClient() {
             </>
           ) : (
             <>
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="white"
-                strokeWidth="2.5"
-              >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
                 <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
                 <polyline points="17 21 17 13 7 13 7 21" />
                 <polyline points="7 3 7 8 15 8" />
@@ -309,11 +241,7 @@ export default function SummaryClient() {
         <button
           onClick={handleDiscard}
           className="w-full py-3.5 rounded-2xl font-bold text-sm"
-          style={{
-            background: 'rgba(255,255,255,0.05)',
-            color: 'rgba(255,255,255,0.4)',
-            border: '1px solid rgba(255,255,255,0.08)',
-          }}
+          style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.08)' }}
         >
           Descartar atividade
         </button>
