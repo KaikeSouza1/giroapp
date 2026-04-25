@@ -70,7 +70,7 @@ export default function LoginPage() {
             Bem-vindo<br />de volta 👋
           </h1>
           <p className="text-white/70 text-sm mt-1">
-            Entre para continuar sua jornada
+            Entre para continuar
           </p>
         </div>
 
