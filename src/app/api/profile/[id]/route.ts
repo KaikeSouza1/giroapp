@@ -2,12 +2,12 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
-import { users, followers, routeSessions, routes, userBadges, badges } from '@/lib/db/remote/schema'
-import { eq, and, sql } from 'drizzle-orm'
+import { users, followers, routeSessions, routes, userBadges, badges, checkins } from '@/lib/db/remote/schema'
+import { eq, and, sql, desc } from 'drizzle-orm'
 
 export async function GET(
   request: Request, 
-  context: { params: Promise<{ id: string }> } // Tipagem Next 15
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const resolvedParams = await context.params
@@ -18,11 +18,14 @@ export async function GET(
 
     if (!authUser) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
+    // Identifica o usuário logado
     const [me] = await db.select({ id: users.id }).from(users).where(eq(users.supabaseAuthId, authUser.id))
 
+    // Busca dados básicos do perfil alvo
     const [targetUser] = await db.select().from(users).where(eq(users.id, targetUserId))
     if (!targetUser) return NextResponse.json({ error: 'Utilizador não encontrado' }, { status: 404 })
 
+    // Contagem de seguidores e seguindo
     const [followersRes] = await db.select({ count: sql<number>`count(*)` }).from(followers).where(eq(followers.followingId, targetUser.id))
     const [followingRes] = await db.select({ count: sql<number>`count(*)` }).from(followers).where(eq(followers.followerId, targetUser.id))
     
@@ -33,13 +36,27 @@ export async function GET(
       if (followCheck) isFollowing = true
     }
 
-    const completedRoutesRes = await db.select({
-        id: routeSessions.id, routeName: routes.name, completedAt: routeSessions.completedAt, distanceKm: routeSessions.totalDistanceKm
+    // 👇 BUSCA AS ROTAS COM FOTOS AGREGADAS E CÁLCULO DE TEMPO
+    const completedRoutesRes = await db
+      .select({
+        id: routeSessions.id,
+        routeName: routes.name,
+        routeType: routes.type,
+        routeId: routes.id,
+        startedAt: routeSessions.startedAt,
+        completedAt: routeSessions.completedAt,
+        distanceKm: routeSessions.totalDistanceKm,
+        // Agrega as fotos dos checkins realizados nesta sessão
+        photos: sql<string[]>`array_remove(array_agg(${checkins.selfieImagePath}), NULL)`
       })
-      .from(routeSessions).innerJoin(routes, eq(routeSessions.routeId, routes.id))
-      // CORRIGIDO AQUI: 'concluido' para 'concluido'
+      .from(routeSessions)
+      .innerJoin(routes, eq(routeSessions.routeId, routes.id))
+      .leftJoin(checkins, eq(checkins.routeSessionId, routeSessions.id))
       .where(and(eq(routeSessions.userId, targetUser.id), eq(routeSessions.status, 'concluido')))
+      .groupBy(routeSessions.id, routes.name, routes.type, routes.id)
+      .orderBy(desc(routeSessions.completedAt))
 
+    // Busca insígnias
     const badgesRes = await db.select({
         id: badges.id, name: badges.name, description: badges.description, imageUrl: badges.imageUrl, awardedAt: userBadges.awardedAt
       })
@@ -56,7 +73,21 @@ export async function GET(
       followingCount: Number(followingRes?.count || 0),
       isFollowing, 
       isMe: me?.id === targetUser.id,
-      completedRoutes: completedRoutesRes.map(r => ({ ...r, completedAt: r.completedAt?.toISOString() || new Date().toISOString() })),
+      completedRoutes: completedRoutesRes.map(r => {
+        // Calcula o tempo gasto para o frontend exibir corretamente
+        let elapsedMinutes = 0
+        if (r.startedAt && r.completedAt) {
+           const diffMs = new Date(r.completedAt).getTime() - new Date(r.startedAt).getTime()
+           elapsedMinutes = Math.floor(diffMs / 60000)
+        }
+        return {
+          ...r,
+          elapsedMinutes,
+          completedAt: r.completedAt?.toISOString() || new Date().toISOString(),
+          // Remove fotos duplicadas
+          photos: Array.from(new Set(r.photos || [])).filter(Boolean)
+        }
+      }),
       badges: badgesRes.map(b => ({ ...b, awardedAt: b.awardedAt.toISOString() }))
     })
   } catch (err: any) {
