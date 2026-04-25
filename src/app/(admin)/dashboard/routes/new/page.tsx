@@ -49,9 +49,13 @@ export default function NewRoutePage() {
   const [userRole, setUserRole] = useState<string>('')
   const [organizations, setOrganizations] = useState<Organization[]>([])
 
-  // Estados de Busca (Geocoding)
+  // Estados de Busca no Mapa (Voar)
   const [searchQuery, setSearchQuery] = useState('')
   const [isSearchingMap, setIsSearchingMap] = useState(false)
+
+  // ── ESTADOS DE BUSCA PARA CRIAR WAYPOINT ─────────────────────────────────
+  const [wpSearchQuery, setWpSearchQuery] = useState('')
+  const [isSearchingWp, setIsSearchingWp] = useState(false)
 
   // Carrega dados de sessão
   useEffect(() => {
@@ -68,7 +72,7 @@ export default function NewRoutePage() {
     fetchSessionData()
   }, [])
 
-  // ── INICIALIZAÇÃO DO MAPA (COM GOOGLE MAPS SATÉLITE) ─────────────────────
+  // Inicialização do Mapa (Google Maps Satélite)
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return
 
@@ -82,21 +86,18 @@ export default function NewRoutePage() {
         shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
       })
 
-      // Inicia em um lugar genérico (Centro do Brasil)
       const map = L.map(mapContainerRef.current!, { center: [-15.7801, -47.9292], zoom: 4 })
       
-      // 👇 MÁGICA AQUI: Google Maps Satélite (Híbrido) 100% Gratuito via XYZ
       L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
         maxZoom: 20,
         attribution: '© Google Maps',
       }).addTo(map)
 
-      // Tenta pegar a localização do usuário para centrar o mapa
       if ('geolocation' in navigator) {
         navigator.geolocation.getCurrentPosition((position) => {
           map.flyTo([position.coords.latitude, position.coords.longitude], 15)
         }, () => {
-          console.log("Geolocalização negada ou falhou. Mantendo mapa geral.")
+          console.log("Geolocalização negada ou falhou.")
         })
       }
 
@@ -146,7 +147,7 @@ export default function NewRoutePage() {
     updateMarkers()
   }, [waypoints, mapReady])
 
-  // Busca no Mapa (Geocoding com Nominatim)
+  // Busca Simples no Mapa (Apenas move a câmera)
   async function handleSearchMap(e: React.FormEvent) {
     e.preventDefault()
     if (!searchQuery.trim() || !mapRef.current) return
@@ -158,18 +159,60 @@ export default function NewRoutePage() {
       
       if (data && data.length > 0) {
         const { lat, lon } = data[0]
-        mapRef.current.flyTo([parseFloat(lat), parseFloat(lon)], 16, {
-          duration: 1.5,
-          easeLinearity: 0.25
-        })
+        mapRef.current.flyTo([parseFloat(lat), parseFloat(lon)], 16, { duration: 1.5 })
       } else {
-        alert("Local não encontrado. Tente ser mais específico (ex: 'Rua X, Cidade Y').")
+        alert("Local não encontrado.")
       }
     } catch (err) {
-      console.error("Erro na busca de local:", err)
       alert("Erro ao buscar local.")
     } finally {
       setIsSearchingMap(false)
+    }
+  }
+
+  // ── BUSCAR E CRIAR WAYPOINT AUTOMATICAMENTE ──────────────────────────────
+  async function handleSearchAndAddWaypoint(e: React.FormEvent) {
+    e.preventDefault()
+    if (!wpSearchQuery.trim() || !mapRef.current) return
+
+    setIsSearchingWp(true)
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(wpSearchQuery)}`)
+      const data = await res.json()
+
+      if (data && data.length > 0) {
+        const { lat, lon, display_name } = data[0]
+        const latitude = parseFloat(lat)
+        const longitude = parseFloat(lon)
+
+        // Extrai o nome principal (primeira parte antes da vírgula)
+        const placeName = display_name.split(',')[0]
+
+        // Cria o waypoint
+        const newWaypoint: Waypoint = {
+          id: crypto.randomUUID(),
+          name: placeName,
+          description: '',
+          latitude,
+          longitude,
+          order: waypoints.length + 1,
+          radiusMeters: 50,
+          requiresSelfie: true,
+        }
+        
+        setWaypoints((prev) => [...prev, newWaypoint])
+
+        // Move o mapa para o novo ponto
+        mapRef.current.flyTo([latitude, longitude], 17, { duration: 1.5 })
+        
+        setWpSearchQuery('') // Limpa o input
+      } else {
+        alert("Local exato não encontrado para adicionar o waypoint.")
+      }
+    } catch (err) {
+      alert("Erro ao buscar o waypoint.")
+    } finally {
+      setIsSearchingWp(false)
     }
   }
 
@@ -218,7 +261,7 @@ export default function NewRoutePage() {
       try {
         finalImageUrl = await uploadImageToBucket(imageFile, 'giro-app', 'routes')
       } catch (err) {
-        setError('Erro ao fazer upload da imagem de capa. Tente novamente.')
+        setError('Erro ao fazer upload da capa. Tente novamente.')
         setSaving(false)
         return
       }
@@ -254,7 +297,7 @@ export default function NewRoutePage() {
         <div className="flex items-center justify-between px-8 py-5 bg-white border-b border-gray-100 shadow-sm z-10 relative">
           <div>
             <h1 className="text-xl font-black text-gray-900">Nova Rota</h1>
-            <p className="text-gray-400 text-xs mt-0.5">Clique no mapa para adicionar waypoints</p>
+            <p className="text-gray-400 text-xs mt-0.5">Clique no mapa ou pesquise para adicionar waypoints</p>
           </div>
           <div className="flex items-center gap-3">
             <button
@@ -283,7 +326,7 @@ export default function NewRoutePage() {
 
         <div className="flex flex-1 overflow-hidden relative">
           {/* Painel lateral */}
-          <div className="w-96 bg-white border-r border-gray-100 flex flex-col overflow-hidden shadow-2xl z-20">
+          <div className="w-[420px] bg-white border-r border-gray-100 flex flex-col overflow-hidden shadow-2xl z-20">
             {/* Tabs */}
             <div className="flex border-b border-gray-100">
               {(['info', 'waypoints'] as const).map((tab) => (
@@ -314,31 +357,23 @@ export default function NewRoutePage() {
 
                   {userRole === 'superadmin' && (
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                        Organização *
-                      </label>
+                      <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Organização *</label>
                       <select
                         value={form.organizationId}
-                        onChange={(e) =>
-                          setForm((p) => ({ ...p, organizationId: e.target.value }))
-                        }
+                        onChange={(e) => setForm((p) => ({ ...p, organizationId: e.target.value }))}
                         className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 outline-none focus:ring-2 focus:ring-orange-500/20"
                         style={inputStyle}
                       >
                         <option value="">Selecione a organização...</option>
                         {organizations.map((org) => (
-                          <option key={org.id} value={org.id}>
-                            {org.name}
-                          </option>
+                          <option key={org.id} value={org.id}>{org.name}</option>
                         ))}
                       </select>
                     </div>
                   )}
 
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                      Nome da rota *
-                    </label>
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Nome da rota *</label>
                     <input
                       type="text"
                       value={form.name}
@@ -350,9 +385,7 @@ export default function NewRoutePage() {
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                      Descrição
-                    </label>
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Descrição</label>
                     <textarea
                       value={form.description}
                       onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
@@ -365,42 +398,23 @@ export default function NewRoutePage() {
 
                   {/* FOTO DE CAPA */}
                   <div className="flex flex-col gap-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Imagem de Capa da Rota</label>
-                    
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Imagem de Capa</label>
                     {!previewUrl ? (
-                      <label 
-                        htmlFor="image-upload" 
-                        className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed rounded-xl cursor-pointer bg-orange-50/50 border-[#E05300]/40 hover:bg-orange-50 transition-colors"
-                      >
+                      <label htmlFor="image-upload" className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed rounded-xl cursor-pointer bg-orange-50/50 border-[#E05300]/40 hover:bg-orange-50 transition-colors">
                         <div className="flex flex-col items-center justify-center pt-5 pb-6">
                           <svg className="w-8 h-8 mb-3 text-[#E05300]" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 16">
                             <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 13h3a3 3 0 0 0 0-6h-.025A5.56 5.56 0 0 0 16 6.5 5.5 5.5 0 0 0 5.207 5.021C5.137 5.017 5.071 5 5 5a4 4 0 0 0 0 8h2.167M10 15V6m0 0L8 8m2-2 2 2"/>
                           </svg>
-                          <p className="mb-2 text-sm text-gray-600">
-                            <span className="font-semibold text-[#E05300]">Clique para upload</span>
-                          </p>
+                          <p className="mb-2 text-sm text-gray-600"><span className="font-semibold text-[#E05300]">Clique para upload</span></p>
                           <p className="text-xs text-gray-500">PNG ou JPG</p>
                         </div>
-                        <input 
-                          id="image-upload" 
-                          type="file" 
-                          accept="image/png, image/jpeg, image/webp" 
-                          className="hidden" 
-                          onChange={handleImageChange}
-                        />
+                        <input id="image-upload" type="file" accept="image/png, image/jpeg, image/webp" className="hidden" onChange={handleImageChange} />
                       </label>
                     ) : (
                       <div className="relative w-full rounded-2xl overflow-hidden mt-1 shadow-sm" style={{ height: '140px', border: '1.5px solid #F0F0F0' }}>
                         <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
-                        <button
-                          onClick={removeImage}
-                          className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center hover:bg-red-500/80 transition-colors shadow-lg"
-                          style={{ background: 'rgba(0,0,0,0.6)' }}
-                          type="button"
-                        >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
-                            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                          </svg>
+                        <button onClick={removeImage} className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center hover:bg-red-500/80 transition-colors shadow-lg" style={{ background: 'rgba(0,0,0,0.6)' }} type="button">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                         </button>
                       </div>
                     )}
@@ -409,12 +423,7 @@ export default function NewRoutePage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="flex flex-col gap-1.5">
                       <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Tipo</label>
-                      <select
-                        value={form.type}
-                        onChange={(e) => setForm((p) => ({ ...p, type: e.target.value }))}
-                        className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 outline-none focus:ring-2 focus:ring-orange-500/20"
-                        style={inputStyle}
-                      >
+                      <select value={form.type} onChange={(e) => setForm((p) => ({ ...p, type: e.target.value }))} className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 outline-none focus:ring-2 focus:ring-orange-500/20" style={inputStyle}>
                         <option value="caminhada">🥾 Caminhada</option>
                         <option value="cicloturismo">🚴 Cicloturismo</option>
                         <option value="4x4">🚙 4x4</option>
@@ -424,12 +433,7 @@ export default function NewRoutePage() {
                     </div>
                     <div className="flex flex-col gap-1.5">
                       <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Dificuldade</label>
-                      <select
-                        value={form.difficulty}
-                        onChange={(e) => setForm((p) => ({ ...p, difficulty: e.target.value }))}
-                        className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 outline-none focus:ring-2 focus:ring-orange-500/20"
-                        style={inputStyle}
-                      >
+                      <select value={form.difficulty} onChange={(e) => setForm((p) => ({ ...p, difficulty: e.target.value }))} className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 outline-none focus:ring-2 focus:ring-orange-500/20" style={inputStyle}>
                         <option value="facil">🟢 Fácil</option>
                         <option value="medio">🟡 Médio</option>
                         <option value="dificil">🔴 Difícil</option>
@@ -441,25 +445,11 @@ export default function NewRoutePage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="flex flex-col gap-1.5">
                       <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Distância (km)</label>
-                      <input
-                        type="number"
-                        value={form.distanceKm}
-                        onChange={(e) => setForm((p) => ({ ...p, distanceKm: e.target.value }))}
-                        placeholder="Ex: 12.5"
-                        className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 placeholder-gray-400 outline-none focus:ring-2 focus:ring-orange-500/20"
-                        style={inputStyle}
-                      />
+                      <input type="number" value={form.distanceKm} onChange={(e) => setForm((p) => ({ ...p, distanceKm: e.target.value }))} placeholder="Ex: 12.5" className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 placeholder-gray-400 outline-none focus:ring-2 focus:ring-orange-500/20" style={inputStyle} />
                     </div>
                     <div className="flex flex-col gap-1.5">
                       <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Tempo (min)</label>
-                      <input
-                        type="number"
-                        value={form.estimatedMinutes}
-                        onChange={(e) => setForm((p) => ({ ...p, estimatedMinutes: e.target.value }))}
-                        placeholder="Ex: 180"
-                        className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 placeholder-gray-400 outline-none focus:ring-2 focus:ring-orange-500/20"
-                        style={inputStyle}
-                      />
+                      <input type="number" value={form.estimatedMinutes} onChange={(e) => setForm((p) => ({ ...p, estimatedMinutes: e.target.value }))} placeholder="Ex: 180" className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 placeholder-gray-400 outline-none focus:ring-2 focus:ring-orange-500/20" style={inputStyle} />
                     </div>
                   </div>
                 </div>
@@ -467,26 +457,50 @@ export default function NewRoutePage() {
 
               {/* ABA: WAYPOINTS */}
               {activeTab === 'waypoints' && (
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-4">
+                  
+                  {/* BARRA DE BUSCA E ADIÇÃO AUTOMÁTICA DE WAYPOINT */}
+                  <div className="bg-orange-50/50 p-3 rounded-2xl border border-orange-100">
+                    <label className="text-xs font-bold text-orange-800 uppercase tracking-wider mb-2 block">
+                      📍 Adicionar por Busca
+                    </label>
+                    <form onSubmit={handleSearchAndAddWaypoint} className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Ex: Mirante da Pedra..."
+                        value={wpSearchQuery}
+                        onChange={(e) => setWpSearchQuery(e.target.value)}
+                        className="flex-1 px-3 py-2 rounded-xl text-sm text-gray-800 outline-none border border-orange-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isSearchingWp || !wpSearchQuery}
+                        className="px-4 py-2 bg-orange-600 text-white rounded-xl text-xs font-bold hover:bg-orange-700 active:scale-95 transition-all disabled:opacity-50"
+                      >
+                        {isSearchingWp ? '...' : 'Adicionar'}
+                      </button>
+                    </form>
+                  </div>
+
                   {waypoints.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12 gap-2 text-center">
-                      <div className="text-4xl">📍</div>
-                      <p className="text-gray-500 text-sm font-semibold">Nenhum waypoint</p>
-                      <p className="text-gray-400 text-xs">Clique no mapa ao lado para marcar a trilha</p>
+                    <div className="flex flex-col items-center justify-center py-8 gap-2 text-center opacity-70">
+                      <div className="text-4xl">👆</div>
+                      <p className="text-gray-500 text-sm font-semibold mt-2">Busque um local acima</p>
+                      <p className="text-gray-400 text-xs">Ou clique diretamente no mapa ao lado</p>
                     </div>
                   ) : (
                     waypoints.map((wp, i) => (
-                      <div key={wp.id} className="rounded-2xl p-4 border border-gray-200 bg-white shadow-sm">
+                      <div key={wp.id} className="rounded-2xl p-4 border border-gray-200 bg-white shadow-sm relative group hover:border-orange-300 transition-colors">
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs text-white font-bold" style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
+                            <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs text-white font-bold shadow-sm" style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
                               {i + 1}
                             </div>
-                            <span className="text-xs font-bold text-gray-400">
+                            <span className="text-[10px] font-bold text-gray-400 bg-gray-50 px-2 py-1 rounded-md">
                               {wp.latitude.toFixed(5)}, {wp.longitude.toFixed(5)}
                             </span>
                           </div>
-                          <button onClick={() => removeWaypoint(wp.id)} className="text-gray-300 hover:text-red-500 transition-colors">
+                          <button onClick={() => removeWaypoint(wp.id)} className="text-gray-300 hover:text-red-500 transition-colors p-1">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                           </button>
                         </div>
@@ -495,27 +509,27 @@ export default function NewRoutePage() {
                           value={wp.name}
                           onChange={(e) => updateWaypoint(wp.id, 'name', e.target.value)}
                           placeholder={`Nome do ponto ${i + 1}`}
-                          className="w-full px-3 py-2 rounded-lg text-sm text-gray-800 placeholder-gray-400 outline-none mb-2 bg-gray-50 border border-gray-200 focus:border-orange-500"
+                          className="w-full px-3 py-2 rounded-lg text-sm text-gray-900 font-semibold outline-none mb-3 bg-gray-50 border border-gray-200 focus:border-orange-500 focus:bg-white transition-all"
                         />
-                        <div className="flex items-center justify-between mt-2">
-                          <label className="flex items-center gap-2 text-xs font-semibold text-gray-600 cursor-pointer">
+                        <div className="flex items-center justify-between mt-1 pt-3 border-t border-gray-100">
+                          <label className="flex items-center gap-2 text-xs font-semibold text-gray-600 cursor-pointer hover:text-orange-600 transition-colors">
                             <input
                               type="checkbox"
                               checked={wp.requiresSelfie}
                               onChange={(e) => updateWaypoint(wp.id, 'requiresSelfie', e.target.checked)}
-                              className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                              className="rounded border-gray-300 w-4 h-4 text-orange-600 focus:ring-orange-500"
                             />
                             Requer selfie
                           </label>
                           <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-semibold text-gray-500">Raio:</span>
+                            <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Raio</span>
                             <input
                               type="number"
                               value={wp.radiusMeters}
                               onChange={(e) => updateWaypoint(wp.id, 'radiusMeters', parseInt(e.target.value))}
-                              className="w-16 px-2 py-1 rounded-lg text-xs text-gray-800 outline-none text-center font-bold bg-gray-50 border border-gray-200 focus:border-orange-500"
+                              className="w-16 px-2 py-1.5 rounded-lg text-xs text-gray-800 outline-none text-center font-bold bg-gray-50 border border-gray-200 focus:border-orange-500 focus:bg-white transition-all"
                             />
-                            <span className="text-xs font-semibold text-gray-500">m</span>
+                            <span className="text-xs font-bold text-gray-400">m</span>
                           </div>
                         </div>
                       </div>
@@ -526,9 +540,9 @@ export default function NewRoutePage() {
             </div>
           </div>
 
-          {/* ── Mapa + Barra de Busca ──────────────────────────────────────── */}
+          {/* ── Mapa + Barra de Busca Geral ────────────────────────────────── */}
           <div className="flex-1 relative z-0">
-            {/* Barra flutuante de Geocoding */}
+            {/* Barra flutuante de Geocoding (Apenas Mover Mapa) */}
             <div className="absolute top-4 left-6 right-6 z-[400] pointer-events-none flex justify-center">
               <form 
                 onSubmit={handleSearchMap} 
@@ -539,7 +553,7 @@ export default function NewRoutePage() {
                 </div>
                 <input
                   type="text"
-                  placeholder="Buscar local (ex: Morro do Capão, Chapada Diamantina)"
+                  placeholder="Voar para local (Apenas mover o mapa)"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="flex-1 px-3 py-2 text-sm text-gray-800 outline-none bg-transparent font-medium"
@@ -554,7 +568,6 @@ export default function NewRoutePage() {
               </form>
             </div>
 
-            {/* Div onde o Leaflet renderiza */}
             <div ref={mapContainerRef} className="absolute inset-0" />
             
             {!mapReady && (

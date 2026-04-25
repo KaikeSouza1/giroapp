@@ -83,10 +83,15 @@ export default function RouteClient({ params }: { params: Promise<{ id: string }
       const center: [number, number] = firstWp
         ? [parseFloat(firstWp.latitude), parseFloat(firstWp.longitude)]
         : [-27.5954, -48.548]
+      
       const map = L.map(mapContainerRef.current!, { center, zoom: 14, zoomControl: false })
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap'
+      
+      // 👇 MAPA HÍBRIDO DO GOOGLE MAPS ADICIONADO AQUI 👇
+      L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+        maxZoom: 20,
+        attribution: '© Google Maps'
       }).addTo(map)
+
       const latlngs: [number, number][] = []
       currentRoute.waypoints.forEach((wp, i) => {
         const lat = parseFloat(wp.latitude)
