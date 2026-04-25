@@ -50,7 +50,6 @@ export default function PublicProfilePage() {
   const [activeTab, setActiveTab] = useState<'routes' | 'badges'>('routes')
   const [followLoading, setFollowLoading] = useState(false)
   
-  // Estado para visualização de foto em tela cheia (Preservado)
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false)
 
@@ -64,7 +63,6 @@ export default function PublicProfilePage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      // Se o ID for o meu próprio, redireciona para o meu perfil oficial
       if (targetUserId === session.user.id) {
         router.push('/profile')
         return
@@ -76,9 +74,14 @@ export default function PublicProfilePage() {
         })
         const data = await res.json()
         
-        // Filtra para garantir que apenas Rotas Oficiais apareçam (pivotagem)
+        // CORREÇÃO: Garante que completedRoutes e photos sempre existam como arrays
         if (data.completedRoutes) {
-          data.completedRoutes = data.completedRoutes.filter((r: any) => r.routeId !== null)
+          data.completedRoutes = data.completedRoutes
+            .filter((r: any) => r.routeId !== null)
+            .map((r: any) => ({
+              ...r,
+              photos: Array.isArray(r.photos) ? r.photos : []
+            }))
         }
         
         setProfile(data)
@@ -115,8 +118,9 @@ export default function PublicProfilePage() {
     }
   }
 
+  // CORREÇÃO: Formatação robusta de tempo
   const formatTime = (mins: number) => {
-    if (!mins) return '--'
+    if (!mins || mins <= 0) return '--'
     if (mins < 60) return `${mins}m`
     const h = Math.floor(mins / 60)
     const m = mins % 60
@@ -125,9 +129,9 @@ export default function PublicProfilePage() {
 
   const getTypeInfo = (type: string) => {
     switch (type) {
-      case 'caminhada': return { icon: '🥾', label: 'Caminhada', color: 'bg-green-50 text-green-700' }
-      case 'cicloturismo': return { icon: '🚴', label: 'Ciclismo', color: 'bg-blue-50 text-blue-700' }
-      default: return { icon: '📍', label: 'Rota Oficial', color: 'bg-orange-50 text-orange-700' }
+      case 'caminhada': return { icon: '🥾', label: 'Caminhada', color: 'bg-green-100 text-green-700' }
+      case 'cicloturismo': return { icon: '🚴', label: 'Ciclismo', color: 'bg-blue-100 text-blue-700' }
+      default: return { icon: '📍', label: 'Rota Oficial', color: 'bg-orange-100 text-orange-700' }
     }
   }
 
@@ -140,32 +144,29 @@ export default function PublicProfilePage() {
   return (
     <div className="min-h-screen bg-gray-50 font-[family-name:var(--font-dm)] pb-24 relative">
 
-      {/* Visualizador de Foto em Tela Cheia (Premium) */}
+      {/* Visualizador de Foto Premium (Full Screen) */}
       {isPhotoViewerOpen && selectedPhoto && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setIsPhotoViewerOpen(false)}>
-          <button className="absolute top-12 right-6 z-10 w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-white backdrop-blur-md border border-white/20">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm" onClick={() => setIsPhotoViewerOpen(false)}>
+          <button className="absolute top-12 right-6 z-10 w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-white border border-white/20">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
-          <img src={selectedPhoto} alt="Foto da Rota" className="max-w-[95%] max-h-[80%] object-contain rounded-3xl shadow-2xl border-4 border-white/10" />
+          <img src={selectedPhoto} alt="Visualização" className="max-w-[95%] max-h-[85%] object-contain rounded-3xl shadow-2xl shadow-orange-500/10 border-2 border-white/10" />
         </div>
       )}
 
-      {/* Header com Gradiente Premium e Estatísticas */}
+      {/* Header Premium Espelhado */}
       <div className="relative overflow-hidden px-6 pt-12 pb-16"
         style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
         
-        <button onClick={() => router.back()} className="absolute top-12 left-6 z-10 w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center text-white backdrop-blur-md border border-white/20 active:scale-90 transition-transform">
+        <button onClick={() => router.back()} className="absolute top-12 left-6 z-10 w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center text-white backdrop-blur-md border border-white/30 active:scale-90 transition-transform">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
 
         <div className="relative z-10 flex flex-col items-center text-center mt-6">
           <div className="relative mb-4">
             <img src={profile?.avatarUrl || ''} alt="Avatar" className="w-24 h-24 rounded-[32px] object-cover border-4 border-white/30 shadow-2xl" />
-            <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-md">
-              <span className="text-xs">✨</span>
-            </div>
           </div>
-          <h1 className="text-white font-black text-2xl leading-tight drop-shadow-sm">{profile?.displayName}</h1>
+          <h1 className="text-white font-black text-2xl leading-tight drop-shadow-md">{profile?.displayName}</h1>
           <p className="text-white/70 text-sm font-bold tracking-tight">@{profile?.username}</p>
 
           <button 
@@ -173,30 +174,29 @@ export default function PublicProfilePage() {
             disabled={followLoading}
             className={`mt-6 px-10 py-3 rounded-[20px] font-black text-xs transition-all active:scale-95 shadow-xl ${profile?.isFollowing ? 'bg-white/10 text-white border border-white/40 backdrop-blur-md' : 'bg-white text-orange-600'}`}
           >
-            {followLoading ? 'CARREGANDO...' : profile?.isFollowing ? 'SEGUINDO' : 'SEGUIR EXPLORADOR'}
+            {followLoading ? '...' : profile?.isFollowing ? 'SEGUINDO' : 'SEGUIR EXPLORADOR'}
           </button>
         </div>
 
-        {/* ESTATÍSTICAS ESPELHADAS */}
+        {/* Estatísticas com Links Ativos */}
         <div className="relative z-10 flex gap-3 mt-10">
-          <div className="flex-1 text-center rounded-[24px] py-4 backdrop-blur-md border border-white/10 shadow-lg" style={{ background: 'rgba(255,255,255,0.12)' }}>
+          <div className="flex-1 text-center rounded-[24px] py-4 backdrop-blur-md border border-white/10" style={{ background: 'rgba(255,255,255,0.12)' }}>
             <p className="text-white font-black text-xl leading-none">{profile?.completedRoutes?.length ?? 0}</p>
-            <p className="text-white/60 text-[9px] font-bold uppercase mt-1.5 tracking-widest">Rotas</p>
+            <p className="text-white/60 text-[9px] font-black uppercase mt-1.5 tracking-widest">Rotas</p>
           </div>
-          <Link href={`/profile/${profile?.id}/network?tab=followers`} className="flex-1 text-center rounded-[24px] py-4 backdrop-blur-md border border-white/10 shadow-lg active:scale-95 transition-transform" style={{ background: 'rgba(255,255,255,0.12)' }}>
+          <Link href={`/profile/${profile?.id}/network?tab=followers`} className="flex-1 text-center rounded-[24px] py-4 backdrop-blur-md border border-white/10 active:scale-95 transition-transform" style={{ background: 'rgba(255,255,255,0.12)' }}>
             <p className="text-white font-black text-xl leading-none">{profile?.followersCount ?? 0}</p>
-            <p className="text-white/60 text-[9px] font-bold uppercase mt-1.5 tracking-widest">Seguidores</p>
+            <p className="text-white/60 text-[9px] font-black uppercase mt-1.5 tracking-widest">Seguidores</p>
           </Link>
-          <Link href={`/profile/${profile?.id}/network?tab=following`} className="flex-1 text-center rounded-[24px] py-4 backdrop-blur-md border border-white/10 shadow-lg active:scale-95 transition-transform" style={{ background: 'rgba(255,255,255,0.12)' }}>
+          <Link href={`/profile/${profile?.id}/network?tab=following`} className="flex-1 text-center rounded-[24px] py-4 backdrop-blur-md border border-white/10 active:scale-95 transition-transform" style={{ background: 'rgba(255,255,255,0.12)' }}>
             <p className="text-white font-black text-xl leading-none">{profile?.followingCount ?? 0}</p>
-            <p className="text-white/60 text-[9px] font-bold uppercase mt-1.5 tracking-widest">A seguir</p>
+            <p className="text-white/60 text-[9px] font-black uppercase mt-1.5 tracking-widest">A seguir</p>
           </Link>
         </div>
 
         <div className="absolute bottom-0 left-0 right-0 h-8 bg-gray-50 rounded-t-[40px]" />
       </div>
 
-      {/* Tabs Menu */}
       <div className="flex mx-6 mt-2 rounded-[22px] overflow-hidden border border-gray-100 bg-white mb-6 shadow-sm p-1">
         {(['routes', 'badges'] as const).map((tab) => (
           <button 
@@ -204,7 +204,7 @@ export default function PublicProfilePage() {
             onClick={() => setActiveTab(tab)} 
             className={`flex-1 py-3 text-[10px] font-black transition-all rounded-[18px] ${activeTab === tab ? 'bg-orange-600 text-white shadow-md' : 'text-gray-400'}`}
           >
-            {tab === 'routes' ? '🗺️ HISTÓRICO DE ROTAS' : '🏆 CONQUISTAS'}
+            {tab === 'routes' ? '🗺️ HISTÓRICO' : '🏆 CONQUISTAS'}
           </button>
         ))}
       </div>
@@ -217,7 +217,6 @@ export default function PublicProfilePage() {
                 const info = getTypeInfo(route.routeType)
                 return (
                   <div key={route.id} className="bg-white rounded-[32px] overflow-hidden shadow-sm border border-gray-100">
-                    {/* Cabeçalho do Card */}
                     <div className="px-6 pt-5 pb-4 flex justify-between items-start border-b border-gray-50">
                       <div>
                         <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg mb-2 ${info.color}`}>
@@ -230,7 +229,7 @@ export default function PublicProfilePage() {
                       <Link href={`/routes/${route.routeId}`} className="text-[10px] font-black text-orange-600 bg-orange-50 px-3 py-1.5 rounded-xl border border-orange-100 active:scale-90 transition-all">VER MAPA</Link>
                     </div>
 
-                    {/* Stats de Conclusão */}
+                    {/* Stats de Conclusão CORRIGIDOS */}
                     <div className="grid grid-cols-2 divide-x divide-gray-100 bg-gray-50/50 py-4 border-b border-gray-50">
                       <div className="text-center px-4">
                         <p className="text-gray-400 text-[9px] font-black uppercase tracking-widest mb-1">Tempo Gasto</p>
@@ -242,7 +241,7 @@ export default function PublicProfilePage() {
                       </div>
                     </div>
 
-                    {/* Galeria de Fotos Carrossel (Nativo UX) */}
+                    {/* Galeria de Fotos CORRIGIDA */}
                     <div className="px-6 py-5">
                       <p className="text-gray-400 text-[9px] font-black uppercase tracking-widest mb-3">Registros da Aventura</p>
                       {route.photos && route.photos.length > 0 ? (
@@ -259,7 +258,7 @@ export default function PublicProfilePage() {
                         </div>
                       ) : (
                         <div className="py-6 text-center border-2 border-dashed border-gray-100 rounded-[24px] bg-gray-50/30">
-                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Nenhum registro visual anexado</p>
+                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Sem fotos registradas</p>
                         </div>
                       )}
                     </div>
@@ -291,7 +290,7 @@ export default function PublicProfilePage() {
               ))
             ) : (
               <div className="col-span-3 py-20 text-center">
-                <p className="text-gray-400 font-bold text-sm uppercase tracking-widest">Sem insígnias</p>
+                <p className="text-gray-400 font-bold text-sm uppercase tracking-widest">Sem conquistas ainda</p>
               </div>
             )}
           </div>
