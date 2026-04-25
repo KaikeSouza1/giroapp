@@ -33,6 +33,7 @@ export default function SummaryClient() {
     currentPaceSecPerKm,
   } = store
 
+  // Total active time
   const totalMs = startTime
     ? (store.pauseStartTime
         ? store.pauseStartTime
@@ -43,10 +44,10 @@ export default function SummaryClient() {
   const avgSpeedKmH = totalMs > 0 ? distanceKm / (totalMs / 3_600_000) : 0
   const meta = activityType ? ACTIVITY_META[activityType] : null
 
-  // ── CORREÇÃO DO CRASH DO MAPA NA TELA DE SUMÁRIO ────────────────────────
   useEffect(() => {
     let isMounted = true
 
+    // Garante que o status pare, sem dar "flicker" redirecionando pra trás
     if (store.status === 'running' || store.status === 'pausado') {
        store.stopActivity()
     }
@@ -57,12 +58,11 @@ export default function SummaryClient() {
       const L = (await import('leaflet')).default
       await import('leaflet/dist/leaflet.css')
 
-      // Previne execução se o Next.js já tiver desmontado a tela durante o await
       if (!isMounted) return
 
-      // Limpeza nuclear para evitar o erro de container initialized do Leaflet
+      // Evita o crash "Map container is already initialized" do Leaflet
       if ((mapContainerRef.current as any)._leaflet_id) {
-         (mapContainerRef.current as any)._leaflet_id = null
+         (mapContainerRef.current as any)._leaflet_id = null 
       }
 
       const map = L.map(mapContainerRef.current, { zoomControl: false, attributionControl: false })
@@ -79,12 +79,14 @@ export default function SummaryClient() {
           lineJoin: 'round',
         }).addTo(map)
 
+        // Start dot
         const startIcon = L.divIcon({
           html: `<div style="width:14px;height:14px;border-radius:50%;background:#22C55E;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>`,
           className: '', iconSize: [14, 14], iconAnchor: [7, 7],
         })
         L.marker(latlngs[0], { icon: startIcon }).addTo(map)
 
+        // End dot
         if (latlngs.length > 1) {
           const endIcon = L.divIcon({
             html: `<div style="width:14px;height:14px;border-radius:50%;background:#EF4444;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>`,
@@ -93,6 +95,7 @@ export default function SummaryClient() {
           L.marker(latlngs[latlngs.length - 1], { icon: endIcon }).addTo(map)
         }
 
+        // IMPORTANTE: Timeout pro Leaflet calcular o tamanho da tela do celular antes de focar
         setTimeout(() => {
           map.invalidateSize()
           if (latlngs.length > 1) {
@@ -103,7 +106,7 @@ export default function SummaryClient() {
         }, 100)
 
       } else {
-        map.setView([-23.5505, -46.6333], 15)
+        map.setView([-23.5505, -46.6333], 15) // Fallback caso não tenha gravado nada
       }
 
       mapRef.current = map
@@ -151,6 +154,7 @@ export default function SummaryClient() {
       
       const data = await res.json()
       
+      // Guarda o ID que o banco gerou no Zustand para a tela de Share poder atualizar a foto
       if (data.id) {
          store.setLastSavedActivityId(data.id)
       }
@@ -174,6 +178,7 @@ export default function SummaryClient() {
       className="min-h-screen flex flex-col font-[family-name:var(--font-dm)]"
       style={{ background: '#080808' }}
     >
+      {/* Header */}
       <div className="relative overflow-hidden px-5 pt-12 pb-6">
         <div
           className="absolute inset-0"
@@ -195,11 +200,14 @@ export default function SummaryClient() {
         <p className="relative text-white/40 text-sm font-semibold mt-1">{meta.label}</p>
       </div>
 
+      {/* Map */}
       <div className="mx-5 rounded-3xl overflow-hidden relative" style={{ height: 220 }}>
+        {/* Placeholder escuro para evitar flicker antes do mapa aparecer */}
         <div className="absolute inset-0 bg-[#111]" />
         <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
       </div>
 
+      {/* Stats grid */}
       <div className="grid grid-cols-2 gap-3 px-5 mt-4">
         {[
           { label: 'Distância', value: `${distanceKm.toFixed(2)} km`, icon: '📏' },
@@ -225,6 +233,7 @@ export default function SummaryClient() {
         </div>
       )}
 
+      {/* Actions */}
       <div className="px-5 mt-6 pb-12 flex flex-col gap-3">
         <button
           onClick={handleSave}
