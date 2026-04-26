@@ -10,7 +10,7 @@ export const difficultyEnum = pgEnum('difficulty', ['facil', 'medio', 'dificil',
 export const userRoleEnum = pgEnum('user_role', ['superadmin', 'admin_org', 'usuario'])
 export const routeTypeEnum = pgEnum('route_type', ['caminhada', 'corrida', 'cicloturismo', '4x4', 'moto', 'outros'])
 export const sessionStatusEnum = pgEnum('session_status', ['em_andamento', 'pausado', 'concluido', 'cancelado'])
-export const notificationTypeEnum = pgEnum('notification_type', ['follow']) // NOVO ENUM PARA NOTIFICAÇÕES
+export const notificationTypeEnum = pgEnum('notification_type', ['follow']) 
 
 // ─── ORGANIZAÇÕES (SaaS) ──────────────────────────────────────────────────────
 
@@ -58,12 +58,12 @@ export const followers = pgTable('followers', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
-// ─── NOTIFICAÇÕES (NOVO) ──────────────────────────────────────────────────────
+// ─── NOTIFICAÇÕES ─────────────────────────────────────────────────────────────
 
 export const notifications = pgTable('notifications', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }), // Quem recebe
-  actorId: uuid('actor_id').notNull().references(() => users.id, { onDelete: 'cascade' }), // Quem fez a ação
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }), 
+  actorId: uuid('actor_id').notNull().references(() => users.id, { onDelete: 'cascade' }), 
   type: notificationTypeEnum('type').default('follow').notNull(),
   isRead: boolean('is_read').default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -144,7 +144,7 @@ export const routeSessions = pgTable('route_sessions', {
   activityType: routeTypeEnum('activity_type').default('caminhada'),
   status: sessionStatusEnum('status').default('em_andamento'),
   
-  isPublic: boolean('is_public').default(true).notNull(), // 🔥 ADICIONE ESTA LINHA AQUI
+  isPublic: boolean('is_public').default(true).notNull(), 
   
   startedAt: timestamp('started_at').notNull(),
   completedAt: timestamp('completed_at'),
@@ -155,6 +155,23 @@ export const routeSessions = pgTable('route_sessions', {
   
   pathCoordinates: jsonb('path_coordinates'), 
   socialImageUrl: text('social_image_url'),
+})
+
+// ─── INTERAÇÕES DO FEED (NOVO - LIKES E COMENTÁRIOS) ─────────────────────────
+
+export const sessionLikes = pgTable('session_likes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sessionId: uuid('session_id').notNull().references(() => routeSessions.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+export const sessionComments = pgTable('session_comments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sessionId: uuid('session_id').notNull().references(() => routeSessions.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  content: text('content').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
 // ─── INSÍGNIAS (Badges) ───────────────────────────────────────────────────────

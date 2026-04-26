@@ -22,6 +22,10 @@ type FeedItem = {
   completedAt: string
   waypointCount: number
   distanceKm: string | null
+  
+  likesCount: number
+  commentsCount: number
+  hasLiked: boolean
 }
 
 type SearchResult = {
@@ -55,7 +59,6 @@ export default function FeedPage() {
           headers: { Authorization: `Bearer ${session.access_token}` } 
         })
         const data = await res.json()
-        // Filtra para mostrar apenas rotas oficiais concluídas (ignora treinos)
         const officialRoutes = Array.isArray(data) ? data.filter((i: any) => i.routeId !== null) : []
         setFeed(officialRoutes)
       } catch (err) {
@@ -67,7 +70,6 @@ export default function FeedPage() {
     load()
   }, [router, supabase.auth])
 
-  // Lógica de Busca com Debounce (Preservada conforme diretriz)
   useEffect(() => {
     if (searchQuery.trim().length < 2) {
       setSearchResults([])
@@ -105,6 +107,39 @@ export default function FeedPage() {
     return `${Math.floor(hours / 24)}d atrás`
   }
 
+  // 🔥 FUNÇÃO DE LIKE (Optimistic UI: muda a tela antes de bater no servidor)
+  async function toggleLike(sessionId: string, currentLiked: boolean) {
+    // 1. Atualiza visualmente na hora
+    setFeed(prev => prev.map(item => {
+      if (item.id === sessionId) {
+        return {
+          ...item,
+          hasLiked: !currentLiked,
+          likesCount: currentLiked ? item.likesCount - 1 : item.likesCount + 1
+        }
+      }
+      return item
+    }))
+
+    // 2. Manda para a API em background
+    try {
+      await fetch(`/api/feed/${sessionId}/like`, { method: 'POST' })
+    } catch (e) {
+      // Se der erro, desfaz a alteração
+      console.error("Erro ao curtir", e)
+      setFeed(prev => prev.map(item => {
+        if (item.id === sessionId) {
+          return {
+            ...item,
+            hasLiked: currentLiked,
+            likesCount: currentLiked ? item.likesCount + 1 : item.likesCount - 1
+          }
+        }
+        return item
+      }))
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 font-[family-name:var(--font-dm)] pb-24 relative">
       
@@ -112,7 +147,6 @@ export default function FeedPage() {
       <div className="relative overflow-hidden px-6 pt-12 pb-8" 
         style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
         
-        {/* Padrão de Grid Visual */}
         <div className="absolute inset-0 opacity-10">
            <svg width="100%" height="100%"><pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse"><path d="M 30 0 L 0 0 0 30" fill="none" stroke="white" strokeWidth="1.5" /></pattern><rect width="100%" height="100%" fill="url(#grid)" /></svg>
         </div>
@@ -204,7 +238,7 @@ export default function FeedPage() {
                 </Link>
 
                 {/* Estatísticas Rápidas do Card */}
-                <div className="flex items-center gap-6 px-6 py-4 bg-gray-50/50">
+                <div className="flex items-center gap-6 px-6 py-4 bg-gray-50/50 border-b border-gray-50">
                   <div className="flex flex-col">
                     <span className="text-gray-400 text-[9px] uppercase font-black tracking-widest mb-0.5">Distância</span>
                     <span className="font-black text-gray-900 text-[15px]">{item.distanceKm ? `${item.distanceKm} km` : '--'}</span>
@@ -214,6 +248,36 @@ export default function FeedPage() {
                     <span className="text-gray-400 text-[9px] uppercase font-black tracking-widest mb-0.5">Check-ins</span>
                     <span className="font-black text-gray-900 text-[15px]">{item.waypointCount}</span>
                   </div>
+                </div>
+
+                {/* 🔥 BARRA DE INTERAÇÕES (NOVO) */}
+                <div className="px-6 py-4 flex items-center gap-6">
+                  {/* Botão de Like */}
+                  <button 
+                    onClick={() => toggleLike(item.id, item.hasLiked)} 
+                    className="flex items-center gap-2 transition-all active:scale-95 group"
+                  >
+                    {item.hasLiked ? (
+                      <svg width="24" height="24" fill="#ef4444" stroke="#ef4444" strokeWidth="2" viewBox="0 0 24 24" className="drop-shadow-sm">
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                      </svg>
+                    ) : (
+                      <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="text-gray-400 group-hover:text-red-500 transition-colors">
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                      </svg>
+                    )}
+                    <span className={`text-sm font-black ${item.hasLiked ? 'text-red-500' : 'text-gray-500'}`}>
+                      {item.likesCount}
+                    </span>
+                  </button>
+
+                  {/* Botão de Comentário */}
+                  <button className="flex items-center gap-2 transition-all active:scale-95 group">
+                    <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="text-gray-400 group-hover:text-orange-500 transition-colors">
+                      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+                    </svg>
+                    <span className="text-sm font-black text-gray-500">{item.commentsCount}</span>
+                  </button>
                 </div>
               </div>
             ))}
