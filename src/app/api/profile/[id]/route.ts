@@ -1,4 +1,3 @@
-// src/app/api/profile/[id]/route.ts
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
@@ -30,13 +29,25 @@ export async function GET(
     const [followingRes] = await db.select({ count: sql<number>`count(*)` }).from(followers).where(eq(followers.followerId, targetUser.id))
     
     let isFollowing = false
-    if (me && me.id !== targetUser.id) {
+    const isMe = me?.id === targetUser.id
+
+    if (me && !isMe) {
       const [followCheck] = await db.select().from(followers)
         .where(and(eq(followers.followerId, me.id), eq(followers.followingId, targetUserId)))
       if (followCheck) isFollowing = true
     }
 
-    // 👇 BUSCA AS ROTAS COM FOTOS AGREGADAS E CÁLCULO DE TEMPO
+    // Regra de Privacidade: Só exibe rotas privadas se o usuário estiver vendo o próprio perfil
+    const routeConditions = [
+      eq(routeSessions.userId, targetUser.id),
+      eq(routeSessions.status, 'concluido')
+    ]
+
+    if (!isMe) {
+      routeConditions.push(eq(routeSessions.isPublic, true))
+    }
+
+    // 👇 BUSCA AS ROTAS COM FOTOS AGREGADAS E CÁLCULO DE TEMPO (Respeitando a privacidade)
     const completedRoutesRes = await db
       .select({
         id: routeSessions.id,
@@ -46,13 +57,14 @@ export async function GET(
         startedAt: routeSessions.startedAt,
         completedAt: routeSessions.completedAt,
         distanceKm: routeSessions.totalDistanceKm,
+        isPublic: routeSessions.isPublic,
         // Agrega as fotos dos checkins realizados nesta sessão
         photos: sql<string[]>`array_remove(array_agg(${checkins.selfieImagePath}), NULL)`
       })
       .from(routeSessions)
       .innerJoin(routes, eq(routeSessions.routeId, routes.id))
       .leftJoin(checkins, eq(checkins.routeSessionId, routeSessions.id))
-      .where(and(eq(routeSessions.userId, targetUser.id), eq(routeSessions.status, 'concluido')))
+      .where(and(...routeConditions))
       .groupBy(routeSessions.id, routes.name, routes.type, routes.id)
       .orderBy(desc(routeSessions.completedAt))
 
@@ -72,7 +84,7 @@ export async function GET(
       followersCount: Number(followersRes?.count || 0),
       followingCount: Number(followingRes?.count || 0),
       isFollowing, 
-      isMe: me?.id === targetUser.id,
+      isMe,
       completedRoutes: completedRoutesRes.map(r => {
         // Calcula o tempo gasto para o frontend exibir corretamente
         let elapsedMinutes = 0

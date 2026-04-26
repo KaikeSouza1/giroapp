@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
-import { routeSessions } from '@/lib/db/remote/schema'
+import { routeSessions, users } from '@/lib/db/remote/schema'
 import { eq, and } from 'drizzle-orm'
 
 export async function PATCH(
@@ -11,16 +11,20 @@ export async function PATCH(
   try {
     const { id: sessionId } = await params
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user: authUser } } = await supabase.auth.getUser()
     
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (!authUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    // BEM AQUI: Precisamos pegar o ID interno do usuário logado, pois o routeSessions guarda o users.id e não o supabaseAuthId
+    const [dbUser] = await db.select({ id: users.id }).from(users).where(eq(users.supabaseAuthId, authUser.id))
+    if (!dbUser) return NextResponse.json({ error: 'User not found' }, { status: 404 })
 
     const { isPublic } = await request.json()
 
-    // Atualiza apenas se a sessão pertencer ao utilizador logado (Segurança)
+    // Atualiza apenas se a sessão pertencer ao utilizador logado (Segurança) usando o ID interno
     await db.update(routeSessions)
       .set({ isPublic })
-      .where(and(eq(routeSessions.id, sessionId), eq(routeSessions.userId, user.id)))
+      .where(and(eq(routeSessions.id, sessionId), eq(routeSessions.userId, dbUser.id)))
 
     return NextResponse.json({ success: true, isPublic })
   } catch (err: any) {

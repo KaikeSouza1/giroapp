@@ -74,6 +74,7 @@ export async function GET(request: NextRequest) {
     const totalCompleted = completedRoutesRes.length;
     const currentBadgeNames = badgesRes.map(b => b.name);
     
+    // Nomes mapeados perfeitamente com o Front-End
     const badgeRules = [
       { count: 1, name: 'Pioneiro', desc: 'Concluiu a primeira rota oficial.', img: 'internal' },
       { count: 5, name: 'Explorador', desc: 'Alcançou a marca de 5 rotas concluídas.', img: 'internal' },
