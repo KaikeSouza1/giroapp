@@ -1,4 +1,3 @@
-// src/app/(mobile)/(app)/feed/page.tsx
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
@@ -59,10 +58,10 @@ export default function FeedPage() {
   const [loadingComments, setLoadingComments] = useState(false)
   const [submittingComment, setSubmittingComment] = useState(false)
 
-  const supabase = createBrowserClient(
+  const [supabase] = useState(() => createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  ))
 
   useEffect(() => {
     async function load() {
@@ -124,7 +123,7 @@ export default function FeedPage() {
     return `${Math.floor(hours / 24)}d atrás`
   }
 
-  // 🔥 FUNÇÃO DE LIKE (Que faltava na raiz do seu arquivo)
+  // 🔥 FUNÇÃO DE LIKE
   async function toggleLike(sessionId: string, currentLiked: boolean) {
     setFeed(prev => prev.map(item => {
       if (item.id === sessionId) {
@@ -133,7 +132,8 @@ export default function FeedPage() {
       return item
     }))
     try {
-      await fetch(`/api/feed/${sessionId}/like`, { method: 'POST' })
+      const res = await fetch(`/api/feed/${sessionId}/like`, { method: 'POST' })
+      if (!res.ok) throw new Error("Erro da API")
     } catch (e) {
       console.error("Erro ao curtir", e)
       setFeed(prev => prev.map(item => {
@@ -152,6 +152,7 @@ export default function FeedPage() {
     setComments([])
     try {
       const res = await fetch(`/api/feed/${sessionId}/comments`)
+      if (!res.ok) throw new Error("Ficheiro de API não encontrado (404)")
       const data = await res.json()
       setComments(Array.isArray(data) ? data : [])
     } catch (e) {
@@ -171,6 +172,7 @@ export default function FeedPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: newCommentText })
       })
+      if (!res.ok) throw new Error("Erro ao salvar comentário")
       const newComment = await res.json()
       setComments(prev => [...prev, newComment])
       setNewCommentText('')
