@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/components/admin/Sidebar'
 import 'leaflet/dist/leaflet.css'
-import { uploadImageToBucket } from '@/lib/supabase/storage' 
+import { uploadImageToBucket } from '@/lib/supabase/storage'
 
 type Waypoint = {
   id: string
@@ -19,12 +19,57 @@ type Waypoint = {
 
 type Organization = { id: string; name: string }
 
+// ── Decodificador de Polyline (formato Google / OSRM) ──────────────────────
+function decodePolyline(str: string, precision = 5): [number, number][] {
+  let index = 0
+  let lat = 0
+  let lng = 0
+  const coordinates: [number, number][] = []
+  const factor = Math.pow(10, precision)
+
+  while (index < str.length) {
+    let shift = 0
+    let result = 0
+    let byte: number
+    do {
+      byte = str.charCodeAt(index++) - 63
+      result |= (byte & 0x1f) << shift
+      shift += 5
+    } while (byte >= 0x20)
+    const deltaLat = result & 1 ? ~(result >> 1) : result >> 1
+    lat += deltaLat
+
+    shift = 0
+    result = 0
+    do {
+      byte = str.charCodeAt(index++) - 63
+      result |= (byte & 0x1f) << shift
+      shift += 5
+    } while (byte >= 0x20)
+    const deltaLng = result & 1 ? ~(result >> 1) : result >> 1
+    lng += deltaLng
+
+    coordinates.push([lat / factor, lng / factor])
+  }
+  return coordinates
+}
+
+// ── Perfil OSRM por tipo de rota ───────────────────────────────────────────
+const osrmProfile: Record<string, string> = {
+  caminhada: 'foot',
+  cicloturismo: 'bike',
+  '4x4': 'car',
+  moto: 'car',
+  outros: 'foot',
+}
+
 export default function NewRoutePage() {
   const router = useRouter()
   const mapRef = useRef<any>(null)
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const markersRef = useRef<any[]>([])
-  const polylineRef = useRef<any>(null) 
+  const routeLayerRef = useRef<any>(null)
+  const straightLayerRef = useRef<any>(null)
 
   const [form, setForm] = useState({
     name: '',
@@ -34,38 +79,34 @@ export default function NewRoutePage() {
     distanceKm: '',
     estimatedMinutes: '',
     organizationId: '',
-    coverImageUrl: '', 
+    coverImageUrl: '',
   })
 
-  // Estados da Imagem
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-
   const [waypoints, setWaypoints] = useState<Waypoint[]>([])
-  const [followRoads, setFollowRoads] = useState<boolean>(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [mapReady, setMapReady] = useState(false)
   const [activeTab, setActiveTab] = useState<'info' | 'waypoints'>('info')
-
   const [userRole, setUserRole] = useState<string>('')
   const [organizations, setOrganizations] = useState<Organization[]>([])
 
-  // Estados de Busca no Mapa (Voar)
+  // ── NOVO: Estado de Roteamento ─────────────────────────────────────────
+  const [followRoads, setFollowRoads] = useState(true)
+  const [isRouting, setIsRouting] = useState(false)
+  const [routeError, setRouteError] = useState('')
+
   const [searchQuery, setSearchQuery] = useState('')
   const [isSearchingMap, setIsSearchingMap] = useState(false)
-
-  // Estados de Busca para Waypoint Automático
   const [wpSearchQuery, setWpSearchQuery] = useState('')
   const [isSearchingWp, setIsSearchingWp] = useState(false)
 
-  // Carrega dados de sessão
   useEffect(() => {
     async function fetchSessionData() {
       const resUser = await fetch('/api/users/me')
       const user = await resUser.json()
       setUserRole(user?.role || '')
-
       if (user?.role === 'superadmin') {
         const resOrgs = await fetch('/api/admin/organizations')
         if (resOrgs.ok) setOrganizations(await resOrgs.json())
@@ -74,7 +115,7 @@ export default function NewRoutePage() {
     fetchSessionData()
   }, [])
 
-  // Inicialização do Mapa
+  // ── Inicialização do Mapa ─────────────────────────────────────────────
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return
 
@@ -88,31 +129,19 @@ export default function NewRoutePage() {
         shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
       })
 
-      // Inicia com visão geral (Centro do Brasil)
       const map = L.map(mapContainerRef.current!, { center: [-15.7801, -47.9292], zoom: 4 })
-      
-      // CAMADA BASE: Satélite da Esri (Evita erro 404 do Google)
-      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 19,
-        attribution: '© Esri',
+
+      L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+        maxZoom: 20,
+        attribution: '© Google Maps',
       }).addTo(map)
 
-      // CAMADA DE RUAS/CIDADES: Modo Híbrido Esri
-      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 19,
-      }).addTo(map)
-
-      // GEOLOCALIZAÇÃO: Puxa o GPS exato do Admin
       if ('geolocation' in navigator) {
         navigator.geolocation.getCurrentPosition(
           (position) => {
-            // Voa direto para a localização real do usuário
-            map.flyTo([position.coords.latitude, position.coords.longitude], 15, { duration: 1.5 })
+            map.flyTo([position.coords.latitude, position.coords.longitude], 15)
           },
-          (err) => {
-            console.warn("Geolocalização negada ou falhou:", err.message)
-          },
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+          () => {}
         )
       }
 
@@ -137,7 +166,7 @@ export default function NewRoutePage() {
     initMap()
   }, [])
 
-  // Atualiza marcadores
+  // ── Atualiza marcadores ───────────────────────────────────────────────
   useEffect(() => {
     if (!mapRef.current || !mapReady) return
 
@@ -162,125 +191,198 @@ export default function NewRoutePage() {
     updateMarkers()
   }, [waypoints, mapReady])
 
-  // Efeito de Auto-Routing (Atualiza Traçado e Métricas OSRM)
-  useEffect(() => {
-    if (!mapRef.current || !mapReady) return
+  // ── NOVO: Função de Roteamento OSRM ──────────────────────────────────
+  const fetchOSRMRoute = useCallback(
+    async (wps: Waypoint[], type: string) => {
+      if (wps.length < 2 || !mapRef.current) return
 
-    async function drawRouteAndCalculate() {
+      setIsRouting(true)
+      setRouteError('')
+
       const L = (await import('leaflet')).default
 
-      if (polylineRef.current) {
-        mapRef.current.removeLayer(polylineRef.current)
-        polylineRef.current = null
+      // Remove rotas anteriores
+      if (routeLayerRef.current) {
+        routeLayerRef.current.remove()
+        routeLayerRef.current = null
+      }
+      if (straightLayerRef.current) {
+        straightLayerRef.current.remove()
+        straightLayerRef.current = null
       }
 
-      if (waypoints.length < 2) return
+      try {
+        const profile = osrmProfile[type] || 'foot'
+        const coords = wps.map((wp) => `${wp.longitude},${wp.latitude}`).join(';')
+        const url = `https://router.project-osrm.org/route/v1/${profile}/${coords}?overview=full&geometries=polyline`
 
-      if (followRoads) {
-        const coordinates = waypoints.map((wp) => `${wp.longitude},${wp.latitude}`).join(';')
-        
-        let profile = 'driving'
-        if (form.type === 'caminhada') profile = 'foot'
-        if (form.type === 'cicloturismo') profile = 'bike'
+        const res = await fetch(url)
+        const data = await res.json()
 
-        try {
-          const url = `https://router.project-osrm.org/route/v1/${profile}/${coordinates}?overview=full&geometries=geojson`
-          const res = await fetch(url)
-          const data = await res.json()
-
-          if (data.code === 'Ok') {
-            const route = data.routes[0]
-            
-            polylineRef.current = L.geoJSON(route.geometry, {
-              style: { color: '#E05300', weight: 5, opacity: 0.9, lineCap: 'round', lineJoin: 'round' }
-            }).addTo(mapRef.current)
-
-            const distKm = (route.distance / 1000).toFixed(2)
-            const estMin = Math.round(route.duration / 60).toString()
-
-            setForm((prev) => ({ ...prev, distanceKm: distKm, estimatedMinutes: estMin }))
-          }
-        } catch (err) {
-          console.error("Erro ao rotear OSRM:", err)
+        if (data.code !== 'Ok' || !data.routes?.[0]) {
+          throw new Error('Rota não encontrada pelo OSRM')
         }
-      } else {
-        const latlngs = waypoints.map((wp) => [wp.latitude, wp.longitude] as [number, number])
-        
-        polylineRef.current = L.polyline(latlngs, {
-          color: '#E05300', weight: 4, opacity: 0.8, dashArray: '10, 10'
-        }).addTo(mapRef.current)
 
-        let totalMeters = 0
-        for (let i = 0; i < latlngs.length - 1; i++) {
-          totalMeters += mapRef.current.distance(latlngs[i], latlngs[i + 1])
+        const route = data.routes[0]
+        const geometry = route.geometry
+        const latlngs = decodePolyline(geometry)
+
+        // Distância e duração
+        const distKm = (route.distance / 1000).toFixed(2)
+        const durationMin = Math.round(route.duration / 60).toString()
+
+        setForm((prev) => ({
+          ...prev,
+          distanceKm: distKm,
+          estimatedMinutes: durationMin,
+        }))
+
+        // Desenha a polyline
+        const polyline = L.polyline(latlngs, {
+          color: '#E05300',
+          weight: 5,
+          opacity: 0.85,
+          dashArray: undefined,
+          lineJoin: 'round',
+          lineCap: 'round',
+        })
+
+        // Sombra (efeito premium)
+        const shadow = L.polyline(latlngs, {
+          color: '#830200',
+          weight: 9,
+          opacity: 0.2,
+          lineJoin: 'round',
+          lineCap: 'round',
+        })
+
+        shadow.addTo(mapRef.current)
+        polyline.addTo(mapRef.current)
+        routeLayerRef.current = polyline
+
+        // Mantém referência da sombra para remover depois
+        const origRemove = polyline.remove.bind(polyline)
+        ;(polyline as any)._shadow = shadow
+        polyline.remove = () => {
+          shadow.remove()
+          return origRemove()
         }
-        const distKm = (totalMeters / 1000).toFixed(2)
-        const estMin = Math.round((totalMeters / 1000) / 5 * 60).toString() 
-        
-        setForm((prev) => ({ ...prev, distanceKm: distKm, estimatedMinutes: estMin }))
+      } catch (err: any) {
+        setRouteError('Não foi possível calcular a rota. Verifique os waypoints.')
+        console.error('OSRM error:', err)
+      } finally {
+        setIsRouting(false)
       }
+    },
+    []
+  )
+
+  // ── NOVO: Linha reta entre waypoints ─────────────────────────────────
+  const drawStraightLines = useCallback(async (wps: Waypoint[]) => {
+    if (!mapRef.current) return
+    const L = (await import('leaflet')).default
+
+    if (routeLayerRef.current) {
+      routeLayerRef.current.remove()
+      routeLayerRef.current = null
+    }
+    if (straightLayerRef.current) {
+      straightLayerRef.current.remove()
+      straightLayerRef.current = null
     }
 
-    drawRouteAndCalculate()
-  }, [waypoints, followRoads, form.type, mapReady])
+    if (wps.length < 2) return
 
+    const latlngs = wps.map((wp) => [wp.latitude, wp.longitude] as [number, number])
+    const line = L.polyline(latlngs, {
+      color: '#E05300',
+      weight: 4,
+      opacity: 0.75,
+      dashArray: '10, 8',
+      lineJoin: 'round',
+      lineCap: 'round',
+    })
+    line.addTo(mapRef.current)
+    straightLayerRef.current = line
+
+    // Distância em linha reta
+    let totalDist = 0
+    for (let i = 0; i < wps.length - 1; i++) {
+      const from = L.latLng(wps[i].latitude, wps[i].longitude)
+      const to = L.latLng(wps[i + 1].latitude, wps[i + 1].longitude)
+      totalDist += from.distanceTo(to)
+    }
+    const distKm = (totalDist / 1000).toFixed(2)
+    // Estimativa livre: 4 km/h em linha reta
+    const durationMin = Math.round((totalDist / 1000 / 4) * 60).toString()
+    setForm((prev) => ({ ...prev, distanceKm: distKm, estimatedMinutes: durationMin }))
+  }, [])
+
+  // ── NOVO: Dispara roteamento sempre que waypoints ou modo muda ────────
+  useEffect(() => {
+    if (!mapReady) return
+    if (waypoints.length < 2) {
+      // Limpa rotas se menos de 2 pontos
+      if (routeLayerRef.current) { routeLayerRef.current.remove(); routeLayerRef.current = null }
+      if (straightLayerRef.current) { straightLayerRef.current.remove(); straightLayerRef.current = null }
+      return
+    }
+    if (followRoads) {
+      fetchOSRMRoute(waypoints, form.type)
+    } else {
+      drawStraightLines(waypoints)
+    }
+  }, [waypoints, followRoads, form.type, mapReady, fetchOSRMRoute, drawStraightLines])
+
+  // ── Busca geral no mapa ───────────────────────────────────────────────
   async function handleSearchMap(e: React.FormEvent) {
     e.preventDefault()
     if (!searchQuery.trim() || !mapRef.current) return
-
     setIsSearchingMap(true)
     try {
       const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`)
       const data = await res.json()
-      
-      if (data && data.length > 0) {
+      if (data?.length > 0) {
         const { lat, lon } = data[0]
         mapRef.current.flyTo([parseFloat(lat), parseFloat(lon)], 16, { duration: 1.5 })
       } else {
-        alert("Local não encontrado.")
+        alert('Local não encontrado.')
       }
-    } catch (err) {
-      alert("Erro ao buscar local.")
-    } finally {
-      setIsSearchingMap(false)
-    }
+    } catch { alert('Erro ao buscar local.') }
+    finally { setIsSearchingMap(false) }
   }
 
+  // ── Busca e adiciona waypoint ─────────────────────────────────────────
   async function handleSearchAndAddWaypoint(e: React.FormEvent) {
     e.preventDefault()
     if (!wpSearchQuery.trim() || !mapRef.current) return
-
     setIsSearchingWp(true)
     try {
       const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(wpSearchQuery)}`)
       const data = await res.json()
-
-      if (data && data.length > 0) {
+      if (data?.length > 0) {
         const { lat, lon, display_name } = data[0]
+        const latitude = parseFloat(lat)
+        const longitude = parseFloat(lon)
         const placeName = display_name.split(',')[0]
-
         const newWaypoint: Waypoint = {
           id: crypto.randomUUID(),
           name: placeName,
           description: '',
-          latitude: parseFloat(lat),
-          longitude: parseFloat(lon),
+          latitude,
+          longitude,
           order: waypoints.length + 1,
           radiusMeters: 50,
           requiresSelfie: true,
         }
-        
         setWaypoints((prev) => [...prev, newWaypoint])
-        mapRef.current.flyTo([parseFloat(lat), parseFloat(lon)], 17, { duration: 1.5 })
+        mapRef.current.flyTo([latitude, longitude], 17, { duration: 1.5 })
         setWpSearchQuery('')
       } else {
-        alert("Local exato não encontrado para adicionar o waypoint.")
+        alert('Local exato não encontrado para adicionar o waypoint.')
       }
-    } catch (err) {
-      alert("Erro ao buscar o waypoint.")
-    } finally {
-      setIsSearchingWp(false)
-    }
+    } catch { alert('Erro ao buscar o waypoint.') }
+    finally { setIsSearchingWp(false) }
   }
 
   function updateWaypoint(id: string, field: keyof Waypoint, value: any) {
@@ -289,9 +391,7 @@ export default function NewRoutePage() {
 
   function removeWaypoint(id: string) {
     setWaypoints((prev) =>
-      prev
-        .filter((wp) => wp.id !== id)
-        .map((wp, i) => ({ ...wp, order: i + 1 }))
+      prev.filter((wp) => wp.id !== id).map((wp, i) => ({ ...wp, order: i + 1 }))
     )
   }
 
@@ -320,11 +420,10 @@ export default function NewRoutePage() {
     setError('')
 
     let finalImageUrl = form.coverImageUrl
-
     if (imageFile) {
       try {
         finalImageUrl = await uploadImageToBucket(imageFile, 'giro-app', 'routes')
-      } catch (err) {
+      } catch {
         setError('Erro ao fazer upload da capa. Tente novamente.')
         setSaving(false)
         return
@@ -355,8 +454,8 @@ export default function NewRoutePage() {
   return (
     <div className="flex min-h-screen bg-gray-50">
       <Sidebar />
-
       <main className="flex-1 flex flex-col">
+
         {/* Topbar */}
         <div className="flex items-center justify-between px-8 py-5 bg-white border-b border-gray-100 shadow-sm z-10 relative">
           <div>
@@ -460,6 +559,7 @@ export default function NewRoutePage() {
                     />
                   </div>
 
+                  {/* FOTO DE CAPA */}
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Imagem de Capa</label>
                     {!previewUrl ? (
@@ -486,7 +586,12 @@ export default function NewRoutePage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="flex flex-col gap-1.5">
                       <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Tipo</label>
-                      <select value={form.type} onChange={(e) => setForm((p) => ({ ...p, type: e.target.value }))} className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 outline-none focus:ring-2 focus:ring-orange-500/20" style={inputStyle}>
+                      <select
+                        value={form.type}
+                        onChange={(e) => setForm((p) => ({ ...p, type: e.target.value }))}
+                        className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 outline-none focus:ring-2 focus:ring-orange-500/20"
+                        style={inputStyle}
+                      >
                         <option value="caminhada">🥾 Caminhada</option>
                         <option value="cicloturismo">🚴 Cicloturismo</option>
                         <option value="4x4">🚙 4x4</option>
@@ -496,7 +601,12 @@ export default function NewRoutePage() {
                     </div>
                     <div className="flex flex-col gap-1.5">
                       <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Dificuldade</label>
-                      <select value={form.difficulty} onChange={(e) => setForm((p) => ({ ...p, difficulty: e.target.value }))} className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 outline-none focus:ring-2 focus:ring-orange-500/20" style={inputStyle}>
+                      <select
+                        value={form.difficulty}
+                        onChange={(e) => setForm((p) => ({ ...p, difficulty: e.target.value }))}
+                        className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 outline-none focus:ring-2 focus:ring-orange-500/20"
+                        style={inputStyle}
+                      >
                         <option value="facil">🟢 Fácil</option>
                         <option value="medio">🟡 Médio</option>
                         <option value="dificil">🔴 Difícil</option>
@@ -505,36 +615,126 @@ export default function NewRoutePage() {
                     </div>
                   </div>
 
+                  {/* ── NOVO: Switch Seguir Estradas ───────────────────────── */}
+                  <div
+                    className="flex items-center justify-between px-4 py-3 rounded-2xl border transition-all"
+                    style={{
+                      background: followRoads ? 'linear-gradient(135deg, #FFF4F0, #FFF9F7)' : '#F7F7F7',
+                      borderColor: followRoads ? '#E05300' : '#EFEFEF',
+                    }}
+                  >
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-sm font-bold text-gray-800">
+                        {followRoads ? '🛣️ Seguir Estradas' : '🌿 Linha Livre'}
+                      </span>
+                      <span className="text-[11px] text-gray-400 leading-tight">
+                        {followRoads
+                          ? 'Roteamento via OSRM (distância real)'
+                          : 'Linha reta entre pontos (trilha virgem)'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFollowRoads((v) => !v)}
+                      className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none flex-shrink-0"
+                      style={{ background: followRoads ? '#E05300' : '#D1D5DB' }}
+                    >
+                      <span
+                        className="inline-block h-4 w-4 transform rounded-full bg-white shadow-md transition-transform"
+                        style={{ transform: followRoads ? 'translateX(22px)' : 'translateX(4px)' }}
+                      />
+                    </button>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-3">
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">Distância (km) {followRoads && <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-md">Auto</span>}</label>
-                      <input type="number" value={form.distanceKm} onChange={(e) => setForm((p) => ({ ...p, distanceKm: e.target.value }))} placeholder="Ex: 12.5" className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 placeholder-gray-400 outline-none focus:ring-2 focus:ring-orange-500/20" style={inputStyle} />
+                      <label className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+                        Distância (km)
+                        {isRouting && (
+                          <span className="w-3 h-3 border-2 border-orange-300 border-t-orange-600 rounded-full animate-spin" />
+                        )}
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          value={form.distanceKm}
+                          onChange={(e) => setForm((p) => ({ ...p, distanceKm: e.target.value }))}
+                          placeholder="Auto"
+                          className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 placeholder-gray-400 outline-none focus:ring-2 focus:ring-orange-500/20"
+                          style={{
+                            ...inputStyle,
+                            background: isRouting ? '#FFF4F0' : '#F7F7F7',
+                            borderColor: form.distanceKm && !isRouting ? '#E05300' : '#EFEFEF',
+                          }}
+                        />
+                        {form.distanceKm && !isRouting && (
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-orange-500">AUTO</span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">Tempo (min) {followRoads && <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-md">Auto</span>}</label>
-                      <input type="number" value={form.estimatedMinutes} onChange={(e) => setForm((p) => ({ ...p, estimatedMinutes: e.target.value }))} placeholder="Ex: 180" className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 placeholder-gray-400 outline-none focus:ring-2 focus:ring-orange-500/20" style={inputStyle} />
+                      <label className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+                        Tempo (min)
+                        {isRouting && (
+                          <span className="w-3 h-3 border-2 border-orange-300 border-t-orange-600 rounded-full animate-spin" />
+                        )}
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          value={form.estimatedMinutes}
+                          onChange={(e) => setForm((p) => ({ ...p, estimatedMinutes: e.target.value }))}
+                          placeholder="Auto"
+                          className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 placeholder-gray-400 outline-none focus:ring-2 focus:ring-orange-500/20"
+                          style={{
+                            ...inputStyle,
+                            background: isRouting ? '#FFF4F0' : '#F7F7F7',
+                            borderColor: form.estimatedMinutes && !isRouting ? '#E05300' : '#EFEFEF',
+                          }}
+                        />
+                        {form.estimatedMinutes && !isRouting && (
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-orange-500">AUTO</span>
+                        )}
+                      </div>
                     </div>
                   </div>
+
+                  {/* Feedback de erro de roteamento */}
+                  {routeError && (
+                    <div className="rounded-xl px-4 py-3 bg-amber-50 border border-amber-100 flex items-start gap-2">
+                      <span className="text-amber-500 text-sm mt-0.5">⚠️</span>
+                      <p className="text-amber-700 text-xs leading-relaxed">{routeError}. Tente mudar para modo Linha Livre ou ajuste os waypoints.</p>
+                    </div>
+                  )}
+
+                  {/* Badge de status da rota */}
+                  {waypoints.length >= 2 && (
+                    <div
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold"
+                      style={{
+                        background: isRouting ? '#FFF4F0' : followRoads ? '#F0FFF4' : '#F5F5F5',
+                        color: isRouting ? '#C2410C' : followRoads ? '#166534' : '#6B7280',
+                        border: `1px solid ${isRouting ? '#FED7AA' : followRoads ? '#BBF7D0' : '#E5E7EB'}`,
+                      }}
+                    >
+                      {isRouting ? (
+                        <>
+                          <span className="w-3 h-3 border-2 border-orange-300 border-t-orange-600 rounded-full animate-spin flex-shrink-0" />
+                          Calculando rota real via OSRM...
+                        </>
+                      ) : followRoads ? (
+                        <>✅ Rota calculada via estradas reais</>
+                      ) : (
+                        <>📏 Distância em linha reta estimada</>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* ABA: WAYPOINTS */}
               {activeTab === 'waypoints' && (
                 <div className="flex flex-col gap-4">
-                  
-                  {/* Switch Seguir Estradas (Premium UI) */}
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-200">
-                    <div>
-                      <p className="text-sm font-bold text-gray-900">Seguir Estradas</p>
-                      <p className="text-xs text-gray-500 mt-0.5">Roteamento Inteligente (Auto-Routing)</p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input type="checkbox" checked={followRoads} onChange={(e) => setFollowRoads(e.target.checked)} className="sr-only peer" />
-                      <div className="w-12 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
-                    </label>
-                  </div>
-
-                  {/* BARRA DE BUSCA */}
                   <div className="bg-orange-50/50 p-3 rounded-2xl border border-orange-100">
                     <label className="text-xs font-bold text-orange-800 uppercase tracking-wider mb-2 block">
                       📍 Adicionar por Busca
@@ -615,11 +815,11 @@ export default function NewRoutePage() {
             </div>
           </div>
 
-          {/* ── Mapa ────────────────────────────────── */}
+          {/* Mapa + Barra de Busca Geral */}
           <div className="flex-1 relative z-0">
             <div className="absolute top-4 left-6 right-6 z-[400] pointer-events-none flex justify-center">
-              <form 
-                onSubmit={handleSearchMap} 
+              <form
+                onSubmit={handleSearchMap}
                 className="w-full max-w-lg bg-white/95 backdrop-blur-md p-2 rounded-2xl shadow-xl border border-gray-200 flex items-center pointer-events-auto"
               >
                 <div className="pl-3 text-gray-400">
@@ -627,13 +827,13 @@ export default function NewRoutePage() {
                 </div>
                 <input
                   type="text"
-                  placeholder="Voar para local (Apenas mover o mapa)"
+                  placeholder="Voar para local (apenas mover o mapa)"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="flex-1 px-3 py-2 text-sm text-gray-800 outline-none bg-transparent font-medium"
                 />
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   disabled={isSearchingMap || !searchQuery}
                   className="px-5 py-2.5 bg-gray-900 text-white text-xs font-bold rounded-xl hover:bg-black active:scale-95 transition-all disabled:opacity-50"
                 >
@@ -642,8 +842,22 @@ export default function NewRoutePage() {
               </form>
             </div>
 
+            {/* Badge flutuante de modo ativo */}
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[400]">
+              <div
+                className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold shadow-lg backdrop-blur-md border pointer-events-none"
+                style={{
+                  background: followRoads ? 'rgba(224, 83, 0, 0.9)' : 'rgba(50, 50, 50, 0.85)',
+                  color: 'white',
+                  borderColor: followRoads ? '#C2410C' : '#444',
+                }}
+              >
+                {followRoads ? '🛣️ Modo: Seguir Estradas (OSRM)' : '🌿 Modo: Linha Livre'}
+              </div>
+            </div>
+
             <div ref={mapContainerRef} className="absolute inset-0" />
-            
+
             {!mapReady && (
               <div className="absolute inset-0 flex items-center justify-center bg-[#E5E3DF] z-50">
                 <div className="flex flex-col items-center gap-3">
