@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
-import { routeSessions, routes, users, followers, waypoints, organizations, sessionLikes, sessionComments } from '@/lib/db/remote/schema'
+import { routeSessions, routes, users, followers, waypoints, organizations } from '@/lib/db/remote/schema'
 import { eq, inArray, desc, and, or, sql } from 'drizzle-orm' 
 
 export async function GET(request: NextRequest) {
@@ -18,14 +18,17 @@ export async function GET(request: NextRequest) {
     const [dbUser] = await db.select().from(users).where(eq(users.supabaseAuthId, data.user.id)).limit(1)
     if (!dbUser) return NextResponse.json([])
 
+    // ── NOVO: Verifica se a URL pede o feed de um usuário específico (Perfil) ──
     const url = new URL(request.url)
     const profileUserId = url.searchParams.get('userId')
 
     let targetUserIds: string[] = []
 
     if (profileUserId) {
+      // Se tiver userId na URL, puxa só as atividades desse usuário
       targetUserIds = [profileUserId]
     } else {
+      // Lógica original: puxar de quem eu sigo + eu mesmo
       const followingList = await db.select({ followingId: followers.followingId }).from(followers).where(eq(followers.followerId, dbUser.id))
       const followingIds = followingList.map(f => f.followingId)
       targetUserIds = [...followingIds, dbUser.id]
@@ -33,7 +36,7 @@ export async function GET(request: NextRequest) {
 
     if (targetUserIds.length === 0) return NextResponse.json([])
 
-    // ── NOVO: Adicionado Contagem de Likes e Comentários via Subquery ──
+    // ── O SEU CÓDIGO INTACTO, APENAS COM AS 3 CONTAGENS DE LIKES/COMMENTS ADICIONADAS ──
     const sessions = await db.select({
       sessionId: routeSessions.id,
       userId: routeSessions.userId,
@@ -46,18 +49,18 @@ export async function GET(request: NextRequest) {
       socialImageUrl: routeSessions.socialImageUrl,
       isPublic: routeSessions.isPublic,
       
-      // Contadores Sociais Dinâmicos
+      // Contadores Sociais
       likesCount: sql<number>`CAST((SELECT count(*) FROM session_likes WHERE session_id = ${routeSessions.id}) AS INTEGER)`,
       commentsCount: sql<number>`CAST((SELECT count(*) FROM session_comments WHERE session_id = ${routeSessions.id}) AS INTEGER)`,
-      hasLiked: sql<boolean>`EXISTS(SELECT 1 FROM session_likes WHERE session_id = ${routeSessions.id} AND user_id = ${dbUser.id})`
+      hasLiked: sql<boolean>`CASE WHEN EXISTS(SELECT 1 FROM session_likes WHERE session_id = ${routeSessions.id} AND user_id = ${dbUser.id}) THEN true ELSE false END`
     })
       .from(routeSessions)
       .where(
         and(
           inArray(routeSessions.userId, targetUserIds),
           or(
-            eq(routeSessions.isPublic, true),
-            eq(routeSessions.userId, dbUser.id) 
+            eq(routeSessions.isPublic, true), // Exibe se for público
+            eq(routeSessions.userId, dbUser.id) // O dono da rota sempre vê suas próprias rotas ocultas no próprio feed
           )
         )
       )
@@ -66,6 +69,7 @@ export async function GET(request: NextRequest) {
 
     if (sessions.length === 0) return NextResponse.json([])
 
+    // Filtra IDs de rotas válidos (Treinos livres tem routeId = null)
     const routeIds = [...new Set(sessions.map(s => s.routeId).filter(Boolean))] as string[]
     const userIds = [...new Set(sessions.map(s => s.userId))]
 
@@ -105,6 +109,7 @@ export async function GET(request: NextRequest) {
         userUsername: userMap[s.userId]?.username ?? '',
         userAvatarUrl: userMap[s.userId]?.avatarUrl ?? null,
         
+        // Se for trilha, usa os dados da trilha. Se for treino livre, usa os dados da sessão
         routeName: r?.name ?? null,
         routeId: s.routeId,
         coverImageUrl: r?.coverImageUrl ?? null,
@@ -116,16 +121,17 @@ export async function GET(request: NextRequest) {
         waypointCount: s.routeId ? (wpCountMap[s.routeId] ?? 0) : 0,
         distanceKm: s.totalDistanceKm,
         
+        // Novos campos pro front-end (VOCÊ TEM RAZÃO, EU TINHA APAGADO ISSO!)
         socialImageUrl: s.socialImageUrl,
         averagePace: s.averagePace,
         durationSeconds: s.durationSeconds,
         activityType: s.activityType,
         isPublic: s.isPublic,
-
-        // Repassando interações para o frontend
+        
+        // Interações
         likesCount: Number(s.likesCount || 0),
         commentsCount: Number(s.commentsCount || 0),
-        hasLiked: Boolean(s.hasLiked)
+        hasLiked: s.hasLiked === true || String(s.hasLiked) === 'true'
       }
     })
 

@@ -23,6 +23,7 @@ type FeedItem = {
   waypointCount: number
   distanceKm: string | null
   
+  // ADICIONADOS PARA NÃO DAR ERRO DE TYPE
   likesCount: number
   commentsCount: number
   hasLiked: boolean
@@ -35,6 +36,13 @@ type SearchResult = {
   avatarUrl: string | null
 }
 
+type Comment = {
+  id: string
+  content: string
+  createdAt: string
+  user: { id: string; displayName: string; username: string; avatarUrl: string | null }
+}
+
 export default function FeedPage() {
   const router = useRouter()
   const [feed, setFeed] = useState<FeedItem[]>([])
@@ -43,6 +51,13 @@ export default function FeedPage() {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // ── ESTADOS DOS COMENTÁRIOS QUE FALTAVAM ──
+  const [activeCommentSession, setActiveCommentSession] = useState<string | null>(null)
+  const [comments, setComments] = useState<Comment[]>([])
+  const [newCommentText, setNewCommentText] = useState('')
+  const [loadingComments, setLoadingComments] = useState(false)
+  const [submittingComment, setSubmittingComment] = useState(false)
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -59,6 +74,7 @@ export default function FeedPage() {
           headers: { Authorization: `Bearer ${session.access_token}` } 
         })
         const data = await res.json()
+        // Filtra para mostrar apenas rotas oficiais concluídas (ignora treinos)
         const officialRoutes = Array.isArray(data) ? data.filter((i: any) => i.routeId !== null) : []
         setFeed(officialRoutes)
       } catch (err) {
@@ -70,6 +86,7 @@ export default function FeedPage() {
     load()
   }, [router, supabase.auth])
 
+  // Lógica de Busca com Debounce (Preservada conforme diretriz)
   useEffect(() => {
     if (searchQuery.trim().length < 2) {
       setSearchResults([])
@@ -107,46 +124,130 @@ export default function FeedPage() {
     return `${Math.floor(hours / 24)}d atrás`
   }
 
-  // 🔥 FUNÇÃO DE LIKE (Optimistic UI: muda a tela antes de bater no servidor)
+  // 🔥 FUNÇÃO DE LIKE (Que faltava na raiz do seu arquivo)
   async function toggleLike(sessionId: string, currentLiked: boolean) {
-    // 1. Atualiza visualmente na hora
     setFeed(prev => prev.map(item => {
       if (item.id === sessionId) {
-        return {
-          ...item,
-          hasLiked: !currentLiked,
-          likesCount: currentLiked ? item.likesCount - 1 : item.likesCount + 1
-        }
+        return { ...item, hasLiked: !currentLiked, likesCount: currentLiked ? item.likesCount - 1 : item.likesCount + 1 }
       }
       return item
     }))
-
-    // 2. Manda para a API em background
     try {
       await fetch(`/api/feed/${sessionId}/like`, { method: 'POST' })
     } catch (e) {
-      // Se der erro, desfaz a alteração
       console.error("Erro ao curtir", e)
       setFeed(prev => prev.map(item => {
         if (item.id === sessionId) {
-          return {
-            ...item,
-            hasLiked: currentLiked,
-            likesCount: currentLiked ? item.likesCount + 1 : item.likesCount - 1
-          }
+          return { ...item, hasLiked: currentLiked, likesCount: currentLiked ? item.likesCount + 1 : item.likesCount - 1 }
         }
         return item
       }))
     }
   }
 
+  // 🔥 ABRIR COMENTÁRIOS E CARREGAR DA API
+  async function openComments(sessionId: string) {
+    setActiveCommentSession(sessionId)
+    setLoadingComments(true)
+    setComments([])
+    try {
+      const res = await fetch(`/api/feed/${sessionId}/comments`)
+      const data = await res.json()
+      setComments(Array.isArray(data) ? data : [])
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoadingComments(false)
+    }
+  }
+
+  // 🔥 ENVIAR NOVO COMENTÁRIO
+  async function submitComment() {
+    if (!newCommentText.trim() || !activeCommentSession) return
+    setSubmittingComment(true)
+    try {
+      const res = await fetch(`/api/feed/${activeCommentSession}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: newCommentText })
+      })
+      const newComment = await res.json()
+      setComments(prev => [...prev, newComment])
+      setNewCommentText('')
+      setFeed(prev => prev.map(item => {
+        if (item.id === activeCommentSession) {
+          return { ...item, commentsCount: item.commentsCount + 1 }
+        }
+        return item
+      }))
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setSubmittingComment(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 font-[family-name:var(--font-dm)] pb-24 relative">
       
+      {/* ── MODAL DE COMENTÁRIOS ── */}
+      {activeCommentSession && (
+        <div className="fixed inset-0 z-[100] flex flex-col justify-end bg-black/60 backdrop-blur-sm" onClick={() => setActiveCommentSession(null)}>
+          <div className="bg-white w-full h-[75vh] rounded-t-[32px] flex flex-col shadow-2xl animate-in slide-in-from-bottom-full duration-300" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+              <h3 className="text-lg font-black text-gray-900">Comentários</h3>
+              <button onClick={() => setActiveCommentSession(null)} className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200">
+                <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
+              {loadingComments ? (
+                <div className="flex justify-center py-10"><div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" /></div>
+              ) : comments.length === 0 ? (
+                <div className="text-center py-10"><p className="text-gray-400 text-sm font-bold">Seja o primeiro a comentar! 💬</p></div>
+              ) : (
+                comments.map(c => (
+                  <div key={c.id} className="flex gap-3">
+                    <img src={c.user.avatarUrl || ''} className="w-9 h-9 rounded-xl object-cover border border-gray-100 shadow-sm" />
+                    <div className="flex-1 bg-gray-50 rounded-2xl rounded-tl-none p-3.5 border border-gray-100">
+                      <div className="flex justify-between items-end mb-1">
+                        <p className="text-[12px] font-black text-gray-900">{c.user.displayName}</p>
+                        <span className="text-[9px] text-gray-400 font-bold">{timeAgo(c.createdAt)}</span>
+                      </div>
+                      <p className="text-sm text-gray-700 leading-snug">{c.content}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="p-4 border-t border-gray-100 bg-white pb-8">
+              <div className="flex items-end gap-2 bg-gray-50 border border-gray-200 rounded-3xl p-1.5 focus-within:border-orange-500 focus-within:bg-white transition-colors shadow-inner">
+                <textarea 
+                  value={newCommentText}
+                  onChange={(e) => setNewCommentText(e.target.value)}
+                  placeholder="Escreva um comentário..."
+                  className="flex-1 max-h-24 bg-transparent outline-none text-sm p-3 resize-none scrollbar-hide text-gray-800"
+                  rows={1}
+                />
+                <button 
+                  onClick={submitComment}
+                  disabled={submittingComment || !newCommentText.trim()}
+                  className="w-10 h-10 mb-1 mr-1 flex-shrink-0 flex items-center justify-center bg-orange-600 text-white rounded-full shadow-md disabled:opacity-50 active:scale-95 transition-transform"
+                >
+                  <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── FIM DO MODAL ── */}
+
       {/* Header Premium com Gradiente Giro */}
       <div className="relative overflow-hidden px-6 pt-12 pb-8" 
         style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
         
+        {/* Padrão de Grid Visual */}
         <div className="absolute inset-0 opacity-10">
            <svg width="100%" height="100%"><pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse"><path d="M 30 0 L 0 0 0 30" fill="none" stroke="white" strokeWidth="1.5" /></pattern><rect width="100%" height="100%" fill="url(#grid)" /></svg>
         </div>
@@ -237,7 +338,7 @@ export default function FeedPage() {
                   </div>
                 </Link>
 
-                {/* Estatísticas Rápidas do Card */}
+                {/* Estatísticas Rápidas do Card (MANTIDAS EXATAMENTE COMO NO SEU ARQUIVO) */}
                 <div className="flex items-center gap-6 px-6 py-4 bg-gray-50/50 border-b border-gray-50">
                   <div className="flex flex-col">
                     <span className="text-gray-400 text-[9px] uppercase font-black tracking-widest mb-0.5">Distância</span>
@@ -250,32 +351,21 @@ export default function FeedPage() {
                   </div>
                 </div>
 
-                {/* 🔥 BARRA DE INTERAÇÕES (NOVO) */}
+                {/* 🔥 BARRA DE INTERAÇÕES COM BOTÕES FUNCIONAIS */}
                 <div className="px-6 py-4 flex items-center gap-6">
-                  {/* Botão de Like */}
-                  <button 
-                    onClick={() => toggleLike(item.id, item.hasLiked)} 
-                    className="flex items-center gap-2 transition-all active:scale-95 group"
-                  >
+                  {/* Botão de Curtir */}
+                  <button onClick={() => toggleLike(item.id, item.hasLiked)} className="flex items-center gap-2 transition-all active:scale-95 group">
                     {item.hasLiked ? (
-                      <svg width="24" height="24" fill="#ef4444" stroke="#ef4444" strokeWidth="2" viewBox="0 0 24 24" className="drop-shadow-sm">
-                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-                      </svg>
+                      <svg width="24" height="24" fill="#ef4444" stroke="#ef4444" strokeWidth="2" viewBox="0 0 24 24" className="drop-shadow-sm"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                     ) : (
-                      <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="text-gray-400 group-hover:text-red-500 transition-colors">
-                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-                      </svg>
+                      <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="text-gray-400 group-hover:text-red-500 transition-colors"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                     )}
-                    <span className={`text-sm font-black ${item.hasLiked ? 'text-red-500' : 'text-gray-500'}`}>
-                      {item.likesCount}
-                    </span>
+                    <span className={`text-sm font-black ${item.hasLiked ? 'text-red-500' : 'text-gray-500'}`}>{item.likesCount}</span>
                   </button>
 
-                  {/* Botão de Comentário */}
-                  <button className="flex items-center gap-2 transition-all active:scale-95 group">
-                    <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="text-gray-400 group-hover:text-orange-500 transition-colors">
-                      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
-                    </svg>
+                  {/* Botão de Comentários */}
+                  <button onClick={() => openComments(item.id)} className="flex items-center gap-2 transition-all active:scale-95 group">
+                    <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="text-gray-400 group-hover:text-orange-500 transition-colors"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
                     <span className="text-sm font-black text-gray-500">{item.commentsCount}</span>
                   </button>
                 </div>

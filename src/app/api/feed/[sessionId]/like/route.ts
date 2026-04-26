@@ -14,21 +14,16 @@ export async function POST(
     
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const [dbUser] = await db.select().from(users).where(eq(users.supabaseAuthId, user.id)).limit(1)
 
-    // Verifica se já deu like
-    const [existingLike] = await db.select().from(sessionLikes)
-      .where(and(eq(sessionLikes.sessionId, sessionId), eq(sessionLikes.userId, dbUser.id)))
+    const [existingLike] = await db.select().from(sessionLikes).where(and(eq(sessionLikes.sessionId, sessionId), eq(sessionLikes.userId, dbUser.id)))
 
     if (existingLike) {
-      // Remove o Like
       await db.delete(sessionLikes).where(eq(sessionLikes.id, existingLike.id))
       return NextResponse.json({ liked: false })
     } else {
-      // Dá o Like
       await db.insert(sessionLikes).values({ sessionId, userId: dbUser.id })
       return NextResponse.json({ liked: true })
     }
