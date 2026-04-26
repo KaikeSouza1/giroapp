@@ -54,13 +54,16 @@ function decodePolyline(str: string, precision = 5): [number, number][] {
   return coordinates
 }
 
-// ── Perfil OSRM por tipo de rota ───────────────────────────────────────────
-const osrmProfile: Record<string, string> = {
-  caminhada: 'foot',
-  cicloturismo: 'bike',
-  '4x4': 'car',
-  moto: 'car',
-  outros: 'foot',
+// ── Config por tipo de rota ────────────────────────────────────────────────
+// O servidor público router.project-osrm.org só suporta "driving".
+// Para foot e bike usamos routed-foot / routed-bike no mesmo host.
+// Velocidade média (km/h) usada para estimar tempo na linha reta.
+const routeConfig: Record<string, { osrmService: string; speedKmh: number; label: string }> = {
+  caminhada:   { osrmService: 'routed-foot',  speedKmh: 5,   label: 'a pé' },
+  cicloturismo:{ osrmService: 'routed-bike',  speedKmh: 15,  label: 'de bike' },
+  '4x4':       { osrmService: 'routed-car',   speedKmh: 40,  label: 'de 4x4' },
+  moto:        { osrmService: 'routed-car',   speedKmh: 50,  label: 'de moto' },
+  outros:      { osrmService: 'routed-foot',  speedKmh: 5,   label: 'a pé' },
 }
 
 export default function NewRoutePage() {
@@ -212,9 +215,11 @@ export default function NewRoutePage() {
       }
 
       try {
-        const profile = osrmProfile[type] || 'foot'
+        const config = routeConfig[type] || routeConfig['caminhada']
         const coords = wps.map((wp) => `${wp.longitude},${wp.latitude}`).join(';')
-        const url = `https://router.project-osrm.org/route/v1/${profile}/${coords}?overview=full&geometries=polyline`
+        // Cada serviço (routed-foot / routed-bike / routed-car) tem seu próprio
+        // subdomínio no servidor público do OSRM com o perfil correto.
+        const url = `https://${config.osrmService}.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=polyline`
 
         const res = await fetch(url)
         const data = await res.json()
@@ -278,7 +283,7 @@ export default function NewRoutePage() {
   )
 
   // ── NOVO: Linha reta entre waypoints ─────────────────────────────────
-  const drawStraightLines = useCallback(async (wps: Waypoint[]) => {
+  const drawStraightLines = useCallback(async (wps: Waypoint[], type: string) => {
     if (!mapRef.current) return
     const L = (await import('leaflet')).default
 
@@ -313,8 +318,9 @@ export default function NewRoutePage() {
       totalDist += from.distanceTo(to)
     }
     const distKm = (totalDist / 1000).toFixed(2)
-    // Estimativa livre: 4 km/h em linha reta
-    const durationMin = Math.round((totalDist / 1000 / 4) * 60).toString()
+    // Velocidade correta por tipo de atividade
+    const config = routeConfig[type] || routeConfig['caminhada']
+    const durationMin = Math.round((totalDist / 1000 / config.speedKmh) * 60).toString()
     setForm((prev) => ({ ...prev, distanceKm: distKm, estimatedMinutes: durationMin }))
   }, [])
 
@@ -330,7 +336,7 @@ export default function NewRoutePage() {
     if (followRoads) {
       fetchOSRMRoute(waypoints, form.type)
     } else {
-      drawStraightLines(waypoints)
+      drawStraightLines(waypoints, form.type)
     }
   }, [waypoints, followRoads, form.type, mapReady, fetchOSRMRoute, drawStraightLines])
 

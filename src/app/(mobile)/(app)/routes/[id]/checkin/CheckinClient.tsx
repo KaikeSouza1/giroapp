@@ -4,7 +4,6 @@ import { useEffect, useState, useRef, use, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 
-// 👇 IMPORTS NATIVOS NO TOPO DO ARQUIVO
 import { Camera, CameraResultType, CameraSource, CameraDirection } from '@capacitor/camera'
 import { Geolocation } from '@capacitor/geolocation'
 
@@ -44,7 +43,7 @@ type Phase =
   | 'reviewing'
   | 'uploading'
   | 'concluido'
-  | 'offline-completed' // <--- FASE OFFLINE ADICIONADA
+  | 'offline-completed'
   | 'error'
 
 type CompletedCheckin = {
@@ -54,6 +53,32 @@ type CompletedCheckin = {
   lng: number
   distance: number
 }
+
+// ── Constantes de Filtro GPS ──────────────────────────────────────────────────
+
+/**
+ * Descarta leituras GPS com precisão pior do que este valor (em metros).
+ * Acima de 25m, o sensor está oscilando demais e causa "pulos" na distância.
+ */
+const MAX_ACCEPTABLE_ACCURACY = 25
+
+/**
+ * Número de coordenadas acumuladas para calcular a média móvel da posição.
+ * 5 amostras = ~5 segundos de suavização (com GPS a 1Hz).
+ */
+const MOVING_AVERAGE_WINDOW = 5
+
+/**
+ * A UI de distância é atualizada a cada N milissegundos via interpolação
+ * linear, garantindo redução fluida sem depender de novas leituras do GPS.
+ */
+const UI_UPDATE_INTERVAL_MS = 300
+
+/**
+ * Velocidade máxima de caminhada em m/ms (11 km/h ≈ 3.06 m/s).
+ * Usada para limitar a interpolação e evitar saltos impossíveis na UI.
+ */
+const MAX_INTERPOLATION_SPEED_MS = 0.00306
 
 // ── Utilitários ───────────────────────────────────────────────────────────────
 
@@ -87,7 +112,36 @@ function accuracyLabel(acc: number): { text: string; color: string } {
   return { text: 'Fraca', color: '#ef4444' }
 }
 
-// ── Componente ─────────────────────────────────────────────────────────────────
+/**
+ * Calcula a média ponderada de um buffer de coordenadas.
+ * Coordenadas mais recentes (índice maior) recebem peso maior.
+ * Isso dá mais importância ao movimento atual sem descartar o histórico.
+ */
+function weightedAveragePosition(
+  buffer: Array<{ lat: number; lng: number }>
+): { lat: number; lng: number } {
+  if (buffer.length === 0) return { lat: 0, lng: 0 }
+  if (buffer.length === 1) return buffer[0]
+
+  let totalWeight = 0
+  let sumLat = 0
+  let sumLng = 0
+
+  buffer.forEach((coord, index) => {
+    // Peso linear: o ponto mais recente tem peso = N, o mais antigo = 1
+    const weight = index + 1
+    sumLat += coord.lat * weight
+    sumLng += coord.lng * weight
+    totalWeight += weight
+  })
+
+  return {
+    lat: sumLat / totalWeight,
+    lng: sumLng / totalWeight,
+  }
+}
+
+// ── Componente Principal ───────────────────────────────────────────────────────
 
 export default function CheckinClient({ params }: { params: Promise<{ id: string }> }) {
   const { id: routeId } = use(params)
@@ -103,17 +157,71 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [currentWpIndex, setCurrentWpIndex] = useState(0)
   const [userPosition, setUserPosition] = useState<UserPosition | null>(null)
-  const [distanceToWp, setDistanceToWp] = useState<number | null>(null)
   const [elapsedSecs, setElapsedSecs] = useState(0)
   const [completedCheckins, setCompletedCheckins] = useState<CompletedCheckin[]>([])
-  
+
+  // ── Estado de distância: dois valores separados ──────────────────────────
+  // `trueDistanceToWp` = distância calculada do GPS suavizado → fonte da verdade
+  // `displayedDistance` = valor animado na UI → sobe/desce suavemente via timer
+  const [trueDistanceToWp, setTrueDistanceToWp] = useState<number | null>(null)
+  const [displayedDistance, setDisplayedDistance] = useState<number | null>(null)
+
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [isSyncingData, setIsSyncingData] = useState(false)
 
+  // ── Refs ────────────────────────────────────────────────────────────────────
   const gpsWatchIdRef = useRef<string | null>(null)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const uiInterpolationRef = useRef<NodeJS.Timeout | null>(null)
 
+  /**
+   * Buffer circular das últimas N coordenadas GPS válidas.
+   * Apenas coordenadas com accuracy ≤ MAX_ACCEPTABLE_ACCURACY entram aqui.
+   */
+  const gpsBufferRef = useRef<Array<{ lat: number; lng: number; accuracy: number }>>([])
+
+  /**
+   * Posição suavizada atual (resultado da média móvel ponderada).
+   * Usada como fonte para todos os cálculos de distância.
+   */
+  const smoothedPositionRef = useRef<{ lat: number; lng: number } | null>(null)
+
+  /**
+   * Timestamp da última atualização real de GPS válida.
+   * Usado para detectar quando o sinal ficou estagnado.
+   */
+  const lastGpsUpdateRef = useRef<number>(0)
+
+  /**
+   * Referência mútavel para o waypoint atual, acessível dentro dos timers
+   * sem causar re-renders ou closures desatualizadas.
+   */
+  const currentWpRef = useRef<Waypoint | null>(null)
+
+  /**
+   * Referência mútavel para a distância real, usada no interpolador de UI.
+   */
+  const trueDistanceRef = useRef<number | null>(null)
+
+  /**
+   * Flag para controlar a fase de "near-waypoint" sem trigger de re-render em loop.
+   */
+  const phaseRef = useRef<Phase>('loading')
+
+  // Sincroniza a ref da fase com o estado React
+  useEffect(() => {
+    phaseRef.current = phase
+  }, [phase])
+
+  // Sincroniza a ref do waypoint atual
+  useEffect(() => {
+    if (route) {
+      currentWpRef.current = route.waypoints[currentWpIndex] ?? null
+    }
+  }, [route, currentWpIndex])
+
+  // ── Carregamento da Rota ──────────────────────────────────────────────────
   useEffect(() => {
     async function load() {
       const { data: { session } } = await supabase.auth.getSession()
@@ -133,43 +241,185 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
     load()
   }, [routeId, router, supabase.auth])
 
+  // ── Timer de Elapsed Time ─────────────────────────────────────────────────
   useEffect(() => {
-    if (!userPosition || !route) return
-    const wp = route.waypoints[currentWpIndex]
+    if (timerRef.current) clearInterval(timerRef.current)
+    timerRef.current = setInterval(() => setElapsedSecs(s => s + 1), 1000)
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+  }, [])
+
+  // ── Interpolador de UI: Suaviza a distância exibida ──────────────────────
+  /**
+   * Este timer roda independentemente do GPS (a cada 300ms).
+   * A cada tick, move `displayedDistance` em direção a `trueDistanceRef`
+   * no máximo pela distância que seria percorrida caminhando em 300ms.
+   * Resultado: o contador de metros nunca "pula", só desliza.
+   */
+  useEffect(() => {
+    if (uiInterpolationRef.current) clearInterval(uiInterpolationRef.current)
+
+    uiInterpolationRef.current = setInterval(() => {
+      const target = trueDistanceRef.current
+      if (target === null) return
+
+      setDisplayedDistance(prev => {
+        if (prev === null) return target
+
+        const diff = target - prev
+
+        // Se a diferença é insignificante (< 0.5m), congela o display
+        if (Math.abs(diff) < 0.5) return target
+
+        // Velocidade máxima de mudança por tick: caminhando rápido em 300ms
+        const maxStep = MAX_INTERPOLATION_SPEED_MS * UI_UPDATE_INTERVAL_MS // ~0.92m por tick
+
+        if (diff < 0) {
+          // Descendo (se aproximando): desce no máximo `maxStep` por tick
+          return Math.max(target, prev + Math.max(diff, -maxStep))
+        } else {
+          // Subindo (se afastando): sobe mais rápido pois é informação importante
+          return Math.min(target, prev + Math.min(diff, maxStep * 3))
+        }
+      })
+    }, UI_UPDATE_INTERVAL_MS)
+
+    return () => { if (uiInterpolationRef.current) clearInterval(uiInterpolationRef.current) }
+  }, [])
+
+  // ── Processamento de cada leitura GPS ────────────────────────────────────
+  /**
+   * Pipeline completo de filtragem e suavização:
+   *
+   * 1. FILTRO DE QUALIDADE: Descarta se accuracy > MAX_ACCEPTABLE_ACCURACY
+   * 2. BUFFER CIRCULAR: Mantém as últimas MOVING_AVERAGE_WINDOW leituras válidas
+   * 3. MÉDIA PONDERADA: Calcula posição suavizada (peso maior para leituras recentes)
+   * 4. CÁLCULO DE DISTÂNCIA: Usa posição suavizada (não a raw) para calcular distância
+   * 5. DETECÇÃO DE RAIO: Usa a distância suavizada para decidir se chegou no waypoint
+   */
+  const processGpsReading = useCallback((
+    rawLat: number,
+    rawLng: number,
+    accuracy: number
+  ) => {
+    // ── Passo 1: Filtro de qualidade ────────────────────────────────────────
+    if (accuracy > MAX_ACCEPTABLE_ACCURACY) {
+      // Sinal ruim: não descarta o buffer, apenas ignora esta leitura
+      // A UI continuará usando a última posição suavizada válida
+      return
+    }
+
+    // ── Passo 2: Adiciona ao buffer circular ─────────────────────────────────
+    const buffer = gpsBufferRef.current
+    buffer.push({ lat: rawLat, lng: rawLng, accuracy })
+
+    // Mantém no máximo MOVING_AVERAGE_WINDOW entradas
+    if (buffer.length > MOVING_AVERAGE_WINDOW) {
+      buffer.shift()
+    }
+
+    lastGpsUpdateRef.current = Date.now()
+
+    // ── Passo 3: Calcula a posição suavizada (média ponderada) ───────────────
+    const smoothed = weightedAveragePosition(buffer)
+    smoothedPositionRef.current = smoothed
+
+    // Atualiza o estado de posição visível (para exibir no indicador de precisão)
+    setUserPosition({ lat: smoothed.lat, lng: smoothed.lng, accuracy })
+
+    // ── Passo 4: Calcula distância com a posição suavizada ───────────────────
+    const wp = currentWpRef.current
     if (!wp) return
 
-    const dist = haversineMeters(userPosition.lat, userPosition.lng, parseFloat(wp.latitude), parseFloat(wp.longitude))
-    setDistanceToWp(dist)
+    const dist = haversineMeters(
+      smoothed.lat,
+      smoothed.lng,
+      parseFloat(wp.latitude),
+      parseFloat(wp.longitude)
+    )
 
-    if (dist <= wp.radiusMeters && phase === 'navigating') setPhase('near-waypoint')
-    if (dist > wp.radiusMeters && phase === 'near-waypoint') setPhase('navigating')
-  }, [userPosition, currentWpIndex, route, phase])
+    // Atualiza a distância verdadeira (fonte da verdade para o interpolador de UI)
+    trueDistanceRef.current = dist
+    setTrueDistanceToWp(dist)
 
-  // ── GPS Tracking ──────────────────────────────────────────────────────────
+    // ── Passo 5: Detecção de raio (usa distância suavizada para estabilidade) ─
+    const currentPhase = phaseRef.current
+
+    if (dist <= wp.radiusMeters && currentPhase === 'navigating') {
+      setPhase('near-waypoint')
+    } else if (dist > wp.radiusMeters * 1.15 && currentPhase === 'near-waypoint') {
+      // Histerese de 15%: o usuário precisa sair 15% além do raio para voltar ao modo
+      // "navigating". Evita que o estado flique quando está exatamente na borda.
+      setPhase('navigating')
+    }
+  }, [])
+
+  // ── Atualização ao mudar de waypoint ─────────────────────────────────────
+  useEffect(() => {
+    // Quando avança para o próximo waypoint, recalcula imediatamente com a
+    // posição suavizada que já temos — sem esperar nova leitura GPS.
+    const wp = route?.waypoints[currentWpIndex]
+    currentWpRef.current = wp ?? null
+
+    if (smoothedPositionRef.current && wp) {
+      const dist = haversineMeters(
+        smoothedPositionRef.current.lat,
+        smoothedPositionRef.current.lng,
+        parseFloat(wp.latitude),
+        parseFloat(wp.longitude)
+      )
+      trueDistanceRef.current = dist
+      setTrueDistanceToWp(dist)
+      // O displayedDistance vai convergir via interpolador, não salta bruscamente
+    } else {
+      trueDistanceRef.current = null
+      setTrueDistanceToWp(null)
+    }
+  }, [currentWpIndex, route])
+
+  // ── GPS Watch ─────────────────────────────────────────────────────────────
   const startRoute = useCallback(async () => {
     setPhase('acquiring-gps')
     setError('')
+
+    // Reseta o buffer de suavização ao iniciar nova rota
+    gpsBufferRef.current = []
+    smoothedPositionRef.current = null
+    trueDistanceRef.current = null
 
     try {
       setSessionId('sessao_local_' + Date.now())
 
       const watchId = await Geolocation.watchPosition(
-        { enableHighAccuracy: true, timeout: 30000 },
+        {
+          enableHighAccuracy: true,
+          timeout: 30000,
+        },
         (pos, err) => {
           if (err || !pos) return
-          setUserPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy })
-          setPhase(prev => prev === 'acquiring-gps' ? 'navigating' : prev)
+
+          const accuracy = pos.coords.accuracy
+          const lat = pos.coords.latitude
+          const lng = pos.coords.longitude
+
+          if (lat === 0 && lng === 0) return
+
+          // Transição de "acquiring-gps" → "navigating" só acontece quando
+          // já temos uma leitura com qualidade suficiente
+          if (phaseRef.current === 'acquiring-gps' && accuracy <= MAX_ACCEPTABLE_ACCURACY) {
+            setPhase('navigating')
+          }
+
+          // Sempre processa a leitura pelo pipeline de suavização
+          processGpsReading(lat, lng, accuracy)
         }
       )
       gpsWatchIdRef.current = watchId
-
-      timerRef.current = setInterval(() => setElapsedSecs(s => s + 1), 1000)
 
     } catch (err: any) {
       setError('Não foi possível iniciar o GPS. Verifique as permissões.')
       setPhase('ready')
     }
-  }, [])
+  }, [processGpsReading])
 
   useEffect(() => {
     return () => { stopGpsAndTimer() }
@@ -177,6 +427,7 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
 
   async function stopGpsAndTimer() {
     if (timerRef.current) clearInterval(timerRef.current)
+    if (uiInterpolationRef.current) clearInterval(uiInterpolationRef.current)
     if (gpsWatchIdRef.current) {
       try {
         await Geolocation.clearWatch({ id: gpsWatchIdRef.current })
@@ -185,7 +436,7 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
     }
   }
 
-  // ── Câmera / Galeria Nativas ─────────────────────────────────────────────
+  // ── Câmera / Galeria Nativas ───────────────────────────────────────────────
   async function openCameraForCheckin(source: 'camera' | 'gallery') {
     setPhase('camera-open')
     setError('')
@@ -206,14 +457,13 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
       setPhase('reviewing')
 
     } catch (err: any) {
-      console.error(err)
       const isCancelled = ['cancel', 'cancelado', 'canceled', 'dismissed', 'no image'].some(w => err?.message?.toLowerCase().includes(w))
       setPhase('near-waypoint')
       if (!isCancelled) setError('Erro ao abrir a câmera ou galeria.')
     }
   }
 
-  // ── Salvar na Memória (Offline-first) ────────────────────────────────────
+  // ── Salvar Check-in na Memória (Offline-first) ────────────────────────────
   async function confirmCheckin() {
     if (!photoDataUrl || !sessionId || !route || !userPosition) return
 
@@ -222,7 +472,8 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
 
     try {
       const wp = route.waypoints[currentWpIndex]
-      const distance = distanceToWp ?? 0
+      // Usa a distância verdadeira suavizada para registrar — não a exibida
+      const distance = trueDistanceRef.current ?? 0
 
       await new Promise(res => setTimeout(res, 400))
 
@@ -242,6 +493,8 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
         await stopGpsAndTimer()
         setPhase('concluido')
       } else {
+        // Reseta o buffer ao avançar: recomeça suavização para o novo waypoint
+        gpsBufferRef.current = []
         setCurrentWpIndex(i => i + 1)
         setPhase('navigating')
       }
@@ -252,20 +505,17 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
     }
   }
 
-  // 👇 FUNÇÃO DE SINCRONIZAÇÃO REVISADA
+  // ── Sincronização Final ────────────────────────────────────────────────────
   const handleFinishAndSync = async () => {
     if (isSyncingData) return
     setIsSyncingData(true)
-    
+
     try {
       const { Network } = await import('@capacitor/network')
       const status = await Network.getStatus()
 
-      // ── FLUXO OFFLINE 🌲 ──
       if (!status.connected) {
         const pending = JSON.parse(localStorage.getItem('giro_pending_routes') || '[]')
-        
-        // Evita duplicar se ele clicar várias vezes sem querer
         const alreadySaved = pending.find((p: any) => p.routeId === route?.id && p.elapsedSecs === elapsedSecs)
         if (!alreadySaved) {
           pending.push({
@@ -276,32 +526,29 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
           })
           localStorage.setItem('giro_pending_routes', JSON.stringify(pending))
         }
-        
         setPhase('offline-completed')
         setIsSyncingData(false)
         return
       }
 
-      // ── FLUXO ONLINE 🌐 ──
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error("Usuário não logado.")
 
       const finalCheckins = []
 
-      // 1. Upload das fotos para o Bucket correto "giro-app"
       for (const c of completedCheckins) {
         const resBlob = await fetch(c.photoUrl)
         const blob = await resBlob.blob()
         const filePath = `checkins/${session.user.id}/${c.waypointId}-${Date.now()}.jpg`
-        
+
         const { error: uploadError } = await supabase.storage
-            .from('giro-app')
-            .upload(filePath, blob, { contentType: 'image/jpeg' })
-            
+          .from('giro-app')
+          .upload(filePath, blob, { contentType: 'image/jpeg' })
+
         if (uploadError) throw new Error(`Erro no Supabase Storage: ${uploadError.message}`)
 
         const { data: { publicUrl } } = supabase.storage.from('giro-app').getPublicUrl(filePath)
-        
+
         finalCheckins.push({
           waypointId: c.waypointId,
           photoUrl: publicUrl,
@@ -311,7 +558,6 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
         })
       }
 
-      // 2. Salvar tudo no Banco
       const res = await fetch('/api/sync/complete-route', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -324,11 +570,10 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
       })
 
       if (!res.ok) {
-          const errData = await res.json()
-          throw new Error(`Erro na API: ${errData.error || 'Desconhecido'}`)
+        const errData = await res.json()
+        throw new Error(`Erro na API: ${errData.error || 'Desconhecido'}`)
       }
 
-      // SUCESSO! Leva pro perfil pra ver a insígnia nova!
       router.replace('/profile')
 
     } catch (err: any) {
@@ -338,26 +583,25 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // RENDERIZAÇÃO DAS TELAS
+  // RENDERIZAÇÃO
   // ─────────────────────────────────────────────────────────────────────────
 
-  // ── NOVA TELA: CONCLUÍDO OFFLINE 🌲 ──
   if (phase === 'offline-completed') {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center font-[family-name:var(--font-dm)] p-6 text-center"
-           style={{ background: '#FFF8F5' }}>
-        <div className="w-24 h-24 rounded-3xl flex items-center justify-center mb-6 shadow-xl" 
-             style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
+        style={{ background: '#FFF8F5' }}>
+        <div className="w-24 h-24 rounded-3xl flex items-center justify-center mb-6 shadow-xl"
+          style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
           <span className="text-5xl">🌲</span>
         </div>
         <h2 className="text-2xl font-black text-gray-900 mb-2">Salvo no celular!</h2>
         <p className="text-gray-500 text-sm mb-8 leading-relaxed px-4">
-          Você está sem internet no momento. Sua trilha e fotos foram guardadas em segurança no seu aparelho.<br/><br/>
+          Você está sem internet no momento. Sua trilha e fotos foram guardadas em segurança no seu aparelho.<br /><br />
           Assim que se conectar a uma rede Wi-Fi ou 4G, abra o aplicativo para sincronizar seus dados e receber sua insígnia.
         </p>
-        <button onClick={() => window.location.href = '/home'} 
-                className="w-full py-4 rounded-2xl text-white font-black text-sm shadow-lg max-w-xs" 
-                style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
+        <button onClick={() => window.location.href = '/home'}
+          className="w-full py-4 rounded-2xl text-white font-black text-sm shadow-lg max-w-xs"
+          style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
           Voltar ao Início
         </button>
       </div>
@@ -390,12 +634,13 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
   const currentWp = route?.waypoints[currentWpIndex]
   const progressPercent = route ? (completedCheckins.length / route.waypoints.length) * 100 : 0
 
+  // ── Tela de Conclusão ──────────────────────────────────────────────────────
   if (phase === 'concluido') {
     return (
       <div className="min-h-screen flex flex-col bg-white font-[family-name:var(--font-dm)]">
         <div className="relative overflow-hidden px-6 pt-12 pb-16" style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
           <svg className="absolute inset-0 w-full h-full opacity-10" viewBox="0 0 375 200" preserveAspectRatio="xMidYMid slice">
-            <path d="M0,100 Q93,60 187,100 Q280,140 375,100" fill="none" stroke="#fff" strokeWidth="1.5"/>
+            <path d="M0,100 Q93,60 187,100 Q280,140 375,100" fill="none" stroke="#fff" strokeWidth="1.5" />
           </svg>
           <div className="relative z-10 text-center">
             <p className="text-white/70 text-sm font-medium mb-1">Parabéns! Você concluiu</p>
@@ -441,17 +686,16 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
             <p className="text-orange-600/80 text-[10px] mt-1">Clique abaixo para enviar suas conquistas para o seu Perfil.</p>
           </div>
 
-          {/* O BOTÃO MAGICO AQUI */}
-          <button 
-            onClick={handleFinishAndSync} 
+          <button
+            onClick={handleFinishAndSync}
             disabled={isSyncingData}
-            className="w-full py-4 rounded-2xl text-white font-black text-sm flex items-center justify-center shadow-lg disabled:opacity-70" 
+            className="w-full py-4 rounded-2xl text-white font-black text-sm flex items-center justify-center shadow-lg disabled:opacity-70"
             style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}
           >
             {isSyncingData ? (
               <span className="flex items-center gap-2">
-                 <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                 Enviando para a nuvem...
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Enviando para a nuvem...
               </span>
             ) : (
               'Finalizar e Salvar Rota 🚀'
@@ -462,6 +706,7 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
     )
   }
 
+  // ── Tela de Revisão de Foto ────────────────────────────────────────────────
   if (phase === 'reviewing' && photoDataUrl) {
     return (
       <div className="min-h-screen flex flex-col bg-black font-[family-name:var(--font-dm)]">
@@ -496,22 +741,28 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
     )
   }
 
+  // ── Tela Principal de Navegação ────────────────────────────────────────────
   const isUploading = phase === 'uploading'
   const isAcquiring = phase === 'acquiring-gps'
   const canCheckin = phase === 'near-waypoint' || phase === 'camera-open'
   const accInfo = userPosition ? accuracyLabel(userPosition.accuracy) : null
 
+  // Distância a exibir: usa o valor interpolado para suavidade na UI
+  // Fallback para o valor real se o interpolador ainda não iniciou
+  const distanceToDisplay = displayedDistance ?? trueDistanceToWp
+
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 font-[family-name:var(--font-dm)]">
 
+      {/* Header com progresso */}
       <div className="relative overflow-hidden px-5 pt-12 pb-16" style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
         <svg className="absolute inset-0 w-full h-full opacity-10" viewBox="0 0 375 200" preserveAspectRatio="xMidYMid slice">
-          <path d="M0,100 Q93,60 187,100 Q280,140 375,100" fill="none" stroke="#fff" strokeWidth="1.5"/>
+          <path d="M0,100 Q93,60 187,100 Q280,140 375,100" fill="none" stroke="#fff" strokeWidth="1.5" />
         </svg>
 
         <div className="relative z-10 flex items-center justify-between mb-5">
           <button onClick={() => { stopGpsAndTimer(); router.back() }} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.2)' }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><polyline points="15 18 9 12 15 6" /></svg>
           </button>
 
           <div className="text-center">
@@ -542,6 +793,7 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
 
       <div className="flex-1 px-5 -mt-2">
 
+        {/* Tela Inicial: Aguardando iniciar */}
         {phase === 'ready' && (
           <div className="pt-4">
             <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm mb-4">
@@ -569,22 +821,31 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
           </div>
         )}
 
+        {/* Tela: Adquirindo sinal GPS */}
         {isAcquiring && (
           <div className="pt-6 flex flex-col items-center gap-5">
             <div className="relative w-24 h-24 mt-4">
               <div className="absolute inset-0 rounded-full animate-ping opacity-25" style={{ background: '#E05300' }} />
-              <div className="absolute inset-2 rounded-full animate-ping opacity-30 animation-delay-200" style={{ background: '#E05300', animationDelay: '0.3s' }} />
+              <div className="absolute inset-2 rounded-full animate-ping opacity-30" style={{ background: '#E05300', animationDelay: '0.3s' }} />
               <div className="absolute inset-4 rounded-full flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
                 <span className="text-2xl">📡</span>
               </div>
             </div>
             <div className="text-center">
               <p className="text-gray-700 font-black text-lg">Buscando sinal GPS</p>
-              <p className="text-gray-400 text-sm mt-1">Fique ao ar livre com o céu aberto</p>
+              <p className="text-gray-400 text-sm mt-1">
+                Fique ao ar livre · Aguardando precisão ≤ {MAX_ACCEPTABLE_ACCURACY}m
+              </p>
+              {userPosition && (
+                <p className="text-xs mt-2 font-bold" style={{ color: accInfo?.color ?? '#888' }}>
+                  Precisão atual: ±{Math.round(userPosition.accuracy)}m
+                </p>
+              )}
             </div>
           </div>
         )}
 
+        {/* Tela: Navegando / Perto do waypoint */}
         {(phase === 'navigating' || phase === 'near-waypoint' || phase === 'camera-open' || isUploading) && currentWp && (
           <div className="pt-4">
 
@@ -604,9 +865,17 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
               <div className="px-5 py-5 flex items-center justify-between">
                 <div>
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Distância</p>
-                  {distanceToWp !== null ? (
-                    <p className="font-black text-3xl" style={{ color: distanceToWp <= currentWp.radiusMeters ? '#22c55e' : '#E05300' }}>
-                      {formatDistance(distanceToWp)}
+                  {distanceToDisplay !== null ? (
+                    <p
+                      className="font-black text-3xl tabular-nums"
+                      style={{
+                        // Cor muda de laranja → verde conforme se aproxima
+                        color: distanceToDisplay <= currentWp.radiusMeters ? '#22c55e' : '#E05300',
+                        // Transição suave de cor (complementa a interpolação de valor)
+                        transition: 'color 0.6s ease',
+                      }}
+                    >
+                      {formatDistance(distanceToDisplay)}
                     </p>
                   ) : (
                     <p className="text-gray-400 font-bold">Calculando...</p>
@@ -614,11 +883,23 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
                 </div>
 
                 <div className="flex flex-col items-center gap-1">
-                  <div className="w-14 h-14 rounded-full flex items-center justify-center text-2xl"
-                    style={{ background: phase === 'near-waypoint' ? '#dcfce7' : '#FFF0EB', border: `2px solid ${phase === 'near-waypoint' ? '#22c55e' : '#E05300'}` }}>
+                  <div
+                    className="w-14 h-14 rounded-full flex items-center justify-center text-2xl"
+                    style={{
+                      background: phase === 'near-waypoint' ? '#dcfce7' : '#FFF0EB',
+                      border: `2px solid ${phase === 'near-waypoint' ? '#22c55e' : '#E05300'}`,
+                      transition: 'all 0.4s ease',
+                    }}
+                  >
                     {phase === 'near-waypoint' ? '✅' : '🧭'}
                   </div>
-                  <p className="text-[10px] font-bold" style={{ color: phase === 'near-waypoint' ? '#22c55e' : '#E05300' }}>
+                  <p
+                    className="text-[10px] font-bold"
+                    style={{
+                      color: phase === 'near-waypoint' ? '#22c55e' : '#E05300',
+                      transition: 'color 0.4s ease',
+                    }}
+                  >
                     {phase === 'near-waypoint' ? 'No local!' : 'A caminho'}
                   </p>
                 </div>
@@ -632,10 +913,16 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
               </div>
             </div>
 
+            {/* Indicador de qualidade GPS */}
             {userPosition && accInfo && (
               <div className="bg-white rounded-2xl px-4 py-3 mb-4 flex items-center gap-3 border border-gray-100">
-                <div className="w-2 h-2 rounded-full" style={{ background: accInfo.color }} />
-                <p className="text-xs text-gray-500 font-medium">GPS {accInfo.text} · Precisão de ±{Math.round(userPosition.accuracy)}m</p>
+                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: accInfo.color }} />
+                <p className="text-xs text-gray-500 font-medium">
+                  GPS {accInfo.text} · ±{Math.round(userPosition.accuracy)}m
+                  {userPosition.accuracy > MAX_ACCEPTABLE_ACCURACY && (
+                    <span className="ml-1 text-amber-500 font-bold"> · aguardando melhor sinal</span>
+                  )}
+                </p>
               </div>
             )}
 
