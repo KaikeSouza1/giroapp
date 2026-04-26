@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
 import { routeSessions, routes, users, followers, waypoints, organizations } from '@/lib/db/remote/schema'
-import { eq, inArray, desc } from 'drizzle-orm'
+import { eq, inArray, desc, and, or } from 'drizzle-orm' // 🔥 IMPORTADOS 'and' e 'or' AQUI
 
 export async function GET(request: NextRequest) {
   try {
@@ -47,9 +47,19 @@ export async function GET(request: NextRequest) {
       averagePace: routeSessions.averagePace,
       durationSeconds: routeSessions.durationSeconds,
       socialImageUrl: routeSessions.socialImageUrl,
+      isPublic: routeSessions.isPublic // 🔥 Repassa o status para o front se precisar
     })
       .from(routeSessions)
-      .where(inArray(routeSessions.userId, targetUserIds))
+      .where(
+        // 🔥 FILTRO DE PRIVACIDADE MANTENDO A SUA LÓGICA DE targetUserIds
+        and(
+          inArray(routeSessions.userId, targetUserIds),
+          or(
+            eq(routeSessions.isPublic, true), // Exibe se for público
+            eq(routeSessions.userId, dbUser.id) // O dono da rota sempre vê suas próprias rotas ocultas no próprio feed
+          )
+        )
+      )
       .orderBy(desc(routeSessions.completedAt))
       .limit(30)
 
@@ -111,7 +121,8 @@ export async function GET(request: NextRequest) {
         socialImageUrl: s.socialImageUrl,
         averagePace: s.averagePace,
         durationSeconds: s.durationSeconds,
-        activityType: s.activityType
+        activityType: s.activityType,
+        isPublic: s.isPublic
       }
     })
 
