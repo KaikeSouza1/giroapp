@@ -83,24 +83,37 @@ export default function NewRoutePage() {
 
       delete (L.Icon.Default.prototype as any)._getIconUrl
       L.Icon.Default.mergeOptions({
-        iconRetinaUrl: '[https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png](https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png)',
-        iconUrl: '[https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png](https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png)',
-        shadowUrl: '[https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png](https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png)',
+        iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
       })
 
+      // Inicia com visão geral (Centro do Brasil)
       const map = L.map(mapContainerRef.current!, { center: [-15.7801, -47.9292], zoom: 4 })
       
-      L.tileLayer('[https://mt1.google.com/vt/lyrs=y&x=](https://mt1.google.com/vt/lyrs=y&x=){x}&y={y}&z={z}', {
-        maxZoom: 20,
-        attribution: '© Google Maps',
+      // CAMADA BASE: Satélite da Esri (Evita erro 404 do Google)
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        attribution: '© Esri',
       }).addTo(map)
 
+      // CAMADA DE RUAS/CIDADES: Modo Híbrido Esri
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+      }).addTo(map)
+
+      // GEOLOCALIZAÇÃO: Puxa o GPS exato do Admin
       if ('geolocation' in navigator) {
-        navigator.geolocation.getCurrentPosition((position) => {
-          map.flyTo([position.coords.latitude, position.coords.longitude], 15)
-        }, () => {
-          console.log("Geolocalização negada ou falhou.")
-        })
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            // Voa direto para a localização real do usuário
+            map.flyTo([position.coords.latitude, position.coords.longitude], 15, { duration: 1.5 })
+          },
+          (err) => {
+            console.warn("Geolocalização negada ou falhou:", err.message)
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        )
       }
 
       map.on('click', (e: any) => {
@@ -191,7 +204,6 @@ export default function NewRoutePage() {
           console.error("Erro ao rotear OSRM:", err)
         }
       } else {
-        // CORREÇÃO APLICADA AQUI: Tipando explicitamente como [number, number]
         const latlngs = waypoints.map((wp) => [wp.latitude, wp.longitude] as [number, number])
         
         polylineRef.current = L.polyline(latlngs, {
@@ -453,7 +465,7 @@ export default function NewRoutePage() {
                     {!previewUrl ? (
                       <label htmlFor="image-upload" className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed rounded-xl cursor-pointer bg-orange-50/50 border-[#E05300]/40 hover:bg-orange-50 transition-colors">
                         <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                          <svg className="w-8 h-8 mb-3 text-[#E05300]" aria-hidden="true" xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" fill="none" viewBox="0 0 20 16">
+                          <svg className="w-8 h-8 mb-3 text-[#E05300]" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 16">
                             <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 13h3a3 3 0 0 0 0-6h-.025A5.56 5.56 0 0 0 16 6.5 5.5 5.5 0 0 0 5.207 5.021C5.137 5.017 5.071 5 5 5a4 4 0 0 0 0 8h2.167M10 15V6m0 0L8 8m2-2 2 2"/>
                           </svg>
                           <p className="mb-2 text-sm text-gray-600"><span className="font-semibold text-[#E05300]">Clique para upload</span></p>
