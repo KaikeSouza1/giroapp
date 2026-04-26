@@ -24,6 +24,7 @@ export default function NewRoutePage() {
   const mapRef = useRef<any>(null)
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const markersRef = useRef<any[]>([])
+  const polylineRef = useRef<any>(null) 
 
   const [form, setForm] = useState({
     name: '',
@@ -41,6 +42,7 @@ export default function NewRoutePage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
   const [waypoints, setWaypoints] = useState<Waypoint[]>([])
+  const [followRoads, setFollowRoads] = useState<boolean>(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [mapReady, setMapReady] = useState(false)
@@ -53,7 +55,7 @@ export default function NewRoutePage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [isSearchingMap, setIsSearchingMap] = useState(false)
 
-  // ── ESTADOS DE BUSCA PARA CRIAR WAYPOINT ─────────────────────────────────
+  // Estados de Busca para Waypoint Automático
   const [wpSearchQuery, setWpSearchQuery] = useState('')
   const [isSearchingWp, setIsSearchingWp] = useState(false)
 
@@ -72,7 +74,7 @@ export default function NewRoutePage() {
     fetchSessionData()
   }, [])
 
-  // Inicialização do Mapa (Google Maps Satélite)
+  // Inicialização do Mapa
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return
 
@@ -81,14 +83,14 @@ export default function NewRoutePage() {
 
       delete (L.Icon.Default.prototype as any)._getIconUrl
       L.Icon.Default.mergeOptions({
-        iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+        iconRetinaUrl: '[https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png](https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png)',
+        iconUrl: '[https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png](https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png)',
+        shadowUrl: '[https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png](https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png)',
       })
 
       const map = L.map(mapContainerRef.current!, { center: [-15.7801, -47.9292], zoom: 4 })
       
-      L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+      L.tileLayer('[https://mt1.google.com/vt/lyrs=y&x=](https://mt1.google.com/vt/lyrs=y&x=){x}&y={y}&z={z}', {
         maxZoom: 20,
         attribution: '© Google Maps',
       }).addTo(map)
@@ -147,7 +149,69 @@ export default function NewRoutePage() {
     updateMarkers()
   }, [waypoints, mapReady])
 
-  // Busca Simples no Mapa (Apenas move a câmera)
+  // Efeito de Auto-Routing (Atualiza Traçado e Métricas OSRM)
+  useEffect(() => {
+    if (!mapRef.current || !mapReady) return
+
+    async function drawRouteAndCalculate() {
+      const L = (await import('leaflet')).default
+
+      if (polylineRef.current) {
+        mapRef.current.removeLayer(polylineRef.current)
+        polylineRef.current = null
+      }
+
+      if (waypoints.length < 2) return
+
+      if (followRoads) {
+        const coordinates = waypoints.map((wp) => `${wp.longitude},${wp.latitude}`).join(';')
+        
+        let profile = 'driving'
+        if (form.type === 'caminhada') profile = 'foot'
+        if (form.type === 'cicloturismo') profile = 'bike'
+
+        try {
+          const url = `https://router.project-osrm.org/route/v1/${profile}/${coordinates}?overview=full&geometries=geojson`
+          const res = await fetch(url)
+          const data = await res.json()
+
+          if (data.code === 'Ok') {
+            const route = data.routes[0]
+            
+            polylineRef.current = L.geoJSON(route.geometry, {
+              style: { color: '#E05300', weight: 5, opacity: 0.9, lineCap: 'round', lineJoin: 'round' }
+            }).addTo(mapRef.current)
+
+            const distKm = (route.distance / 1000).toFixed(2)
+            const estMin = Math.round(route.duration / 60).toString()
+
+            setForm((prev) => ({ ...prev, distanceKm: distKm, estimatedMinutes: estMin }))
+          }
+        } catch (err) {
+          console.error("Erro ao rotear OSRM:", err)
+        }
+      } else {
+        // CORREÇÃO APLICADA AQUI: Tipando explicitamente como [number, number]
+        const latlngs = waypoints.map((wp) => [wp.latitude, wp.longitude] as [number, number])
+        
+        polylineRef.current = L.polyline(latlngs, {
+          color: '#E05300', weight: 4, opacity: 0.8, dashArray: '10, 10'
+        }).addTo(mapRef.current)
+
+        let totalMeters = 0
+        for (let i = 0; i < latlngs.length - 1; i++) {
+          totalMeters += mapRef.current.distance(latlngs[i], latlngs[i + 1])
+        }
+        const distKm = (totalMeters / 1000).toFixed(2)
+        const estMin = Math.round((totalMeters / 1000) / 5 * 60).toString() 
+        
+        setForm((prev) => ({ ...prev, distanceKm: distKm, estimatedMinutes: estMin }))
+      }
+    }
+
+    drawRouteAndCalculate()
+  }, [waypoints, followRoads, form.type, mapReady])
+
   async function handleSearchMap(e: React.FormEvent) {
     e.preventDefault()
     if (!searchQuery.trim() || !mapRef.current) return
@@ -170,7 +234,6 @@ export default function NewRoutePage() {
     }
   }
 
-  // ── BUSCAR E CRIAR WAYPOINT AUTOMATICAMENTE ──────────────────────────────
   async function handleSearchAndAddWaypoint(e: React.FormEvent) {
     e.preventDefault()
     if (!wpSearchQuery.trim() || !mapRef.current) return
@@ -182,30 +245,22 @@ export default function NewRoutePage() {
 
       if (data && data.length > 0) {
         const { lat, lon, display_name } = data[0]
-        const latitude = parseFloat(lat)
-        const longitude = parseFloat(lon)
-
-        // Extrai o nome principal (primeira parte antes da vírgula)
         const placeName = display_name.split(',')[0]
 
-        // Cria o waypoint
         const newWaypoint: Waypoint = {
           id: crypto.randomUUID(),
           name: placeName,
           description: '',
-          latitude,
-          longitude,
+          latitude: parseFloat(lat),
+          longitude: parseFloat(lon),
           order: waypoints.length + 1,
           radiusMeters: 50,
           requiresSelfie: true,
         }
         
         setWaypoints((prev) => [...prev, newWaypoint])
-
-        // Move o mapa para o novo ponto
-        mapRef.current.flyTo([latitude, longitude], 17, { duration: 1.5 })
-        
-        setWpSearchQuery('') // Limpa o input
+        mapRef.current.flyTo([parseFloat(lat), parseFloat(lon)], 17, { duration: 1.5 })
+        setWpSearchQuery('')
       } else {
         alert("Local exato não encontrado para adicionar o waypoint.")
       }
@@ -216,7 +271,6 @@ export default function NewRoutePage() {
     }
   }
 
-  // Helpers de waypoint
   function updateWaypoint(id: string, field: keyof Waypoint, value: any) {
     setWaypoints((prev) => prev.map((wp) => (wp.id === id ? { ...wp, [field]: value } : wp)))
   }
@@ -229,7 +283,6 @@ export default function NewRoutePage() {
     )
   }
 
-  // Lógica de Imagem
   function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (file) {
@@ -243,7 +296,6 @@ export default function NewRoutePage() {
     setPreviewUrl(null)
   }
 
-  // Submit
   async function handleSave() {
     if (!form.name.trim()) { setError('O nome da rota é obrigatório.'); return }
     if (userRole === 'superadmin' && !form.organizationId) {
@@ -396,13 +448,12 @@ export default function NewRoutePage() {
                     />
                   </div>
 
-                  {/* FOTO DE CAPA */}
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Imagem de Capa</label>
                     {!previewUrl ? (
                       <label htmlFor="image-upload" className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed rounded-xl cursor-pointer bg-orange-50/50 border-[#E05300]/40 hover:bg-orange-50 transition-colors">
                         <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                          <svg className="w-8 h-8 mb-3 text-[#E05300]" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 16">
+                          <svg className="w-8 h-8 mb-3 text-[#E05300]" aria-hidden="true" xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" fill="none" viewBox="0 0 20 16">
                             <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 13h3a3 3 0 0 0 0-6h-.025A5.56 5.56 0 0 0 16 6.5 5.5 5.5 0 0 0 5.207 5.021C5.137 5.017 5.071 5 5 5a4 4 0 0 0 0 8h2.167M10 15V6m0 0L8 8m2-2 2 2"/>
                           </svg>
                           <p className="mb-2 text-sm text-gray-600"><span className="font-semibold text-[#E05300]">Clique para upload</span></p>
@@ -444,11 +495,11 @@ export default function NewRoutePage() {
 
                   <div className="grid grid-cols-2 gap-3">
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Distância (km)</label>
+                      <label className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">Distância (km) {followRoads && <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-md">Auto</span>}</label>
                       <input type="number" value={form.distanceKm} onChange={(e) => setForm((p) => ({ ...p, distanceKm: e.target.value }))} placeholder="Ex: 12.5" className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 placeholder-gray-400 outline-none focus:ring-2 focus:ring-orange-500/20" style={inputStyle} />
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Tempo (min)</label>
+                      <label className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">Tempo (min) {followRoads && <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-md">Auto</span>}</label>
                       <input type="number" value={form.estimatedMinutes} onChange={(e) => setForm((p) => ({ ...p, estimatedMinutes: e.target.value }))} placeholder="Ex: 180" className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 placeholder-gray-400 outline-none focus:ring-2 focus:ring-orange-500/20" style={inputStyle} />
                     </div>
                   </div>
@@ -459,7 +510,19 @@ export default function NewRoutePage() {
               {activeTab === 'waypoints' && (
                 <div className="flex flex-col gap-4">
                   
-                  {/* BARRA DE BUSCA E ADIÇÃO AUTOMÁTICA DE WAYPOINT */}
+                  {/* Switch Seguir Estradas (Premium UI) */}
+                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-200">
+                    <div>
+                      <p className="text-sm font-bold text-gray-900">Seguir Estradas</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Roteamento Inteligente (Auto-Routing)</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" checked={followRoads} onChange={(e) => setFollowRoads(e.target.checked)} className="sr-only peer" />
+                      <div className="w-12 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                    </label>
+                  </div>
+
+                  {/* BARRA DE BUSCA */}
                   <div className="bg-orange-50/50 p-3 rounded-2xl border border-orange-100">
                     <label className="text-xs font-bold text-orange-800 uppercase tracking-wider mb-2 block">
                       📍 Adicionar por Busca
@@ -540,9 +603,8 @@ export default function NewRoutePage() {
             </div>
           </div>
 
-          {/* ── Mapa + Barra de Busca Geral ────────────────────────────────── */}
+          {/* ── Mapa ────────────────────────────────── */}
           <div className="flex-1 relative z-0">
-            {/* Barra flutuante de Geocoding (Apenas Mover Mapa) */}
             <div className="absolute top-4 left-6 right-6 z-[400] pointer-events-none flex justify-center">
               <form 
                 onSubmit={handleSearchMap} 
