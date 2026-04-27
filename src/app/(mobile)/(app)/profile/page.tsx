@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { createBrowserClient } from '@supabase/ssr'
 import TabBar from '@/components/mobile/TabBar'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
+import { Share } from '@capacitor/share'
 import { uploadImageToBucket } from '@/lib/supabase/storage'
 
 function dataUrlToFile(dataUrl: string, filename: string): File {
@@ -72,9 +73,16 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [isUpdatingAvatar, setIsUpdatingAvatar] = useState(false)
   const [activeTab, setActiveTab] = useState<'routes' | 'badges'>('routes')
+  
+  // Modais
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false)
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false)
+  
+  // Compartilhamento
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false)
+  const [routeToShare, setRouteToShare] = useState<CompletedRoute | null>(null)
+  const [smsPhone, setSmsPhone] = useState('')
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -115,6 +123,45 @@ export default function ProfilePage() {
   function closePhotoViewer() {
     setIsPhotoViewerOpen(false)
     setTimeout(() => setSelectedPhoto(null), 300)
+  }
+
+  function openShareModal(route: CompletedRoute) {
+    setRouteToShare(route)
+    setSmsPhone('')
+    setIsShareModalOpen(true)
+  }
+
+  // ── FUNÇÕES DE COMPARTILHAMENTO ──────────────────────────────────────────
+  async function handleNativeShare() {
+    if (!routeToShare) return
+    const text = `Acabei de concluir a rota "${routeToShare.routeName}" no GIRO APP em ${formatTime(routeToShare.elapsedMinutes)}! 🚀`
+    
+    try {
+      await Share.share({
+        title: 'Conquista GIRO',
+        text: text,
+        url: 'https://giroapp.vercel.app', 
+        dialogTitle: 'Compartilhe sua aventura'
+      })
+      setIsShareModalOpen(false)
+    } catch (err) {
+      console.error('Erro ao compartilhar nativamente:', err)
+    }
+  }
+
+  function handleSmsShare() {
+    if (!routeToShare || !smsPhone.trim()) return
+    
+    // Remove caracteres não numéricos do telefone
+    const cleanPhone = smsPhone.replace(/\D/g, '')
+    const text = `Acabei de concluir a rota "${routeToShare.routeName}" no GIRO APP em ${formatTime(routeToShare.elapsedMinutes)}! Baixe o app e venha se aventurar: https://giroapp.vercel.app`
+    
+    // Verificação de sistema para formatar o URI do SMS corretamente (iOS usa &body, Android usa ?body)
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    const separator = isIOS ? '&' : '?'
+    
+    window.location.href = `sms:${cleanPhone}${separator}body=${encodeURIComponent(text)}`
+    setIsShareModalOpen(false)
   }
 
   async function toggleVisibility(sessionId: string, currentIsPublic: boolean) {
@@ -235,6 +282,52 @@ export default function ProfilePage() {
         </div>
       )}
 
+      {/* ── MODAL DE COMPARTILHAMENTO ── */}
+      {isShareModalOpen && routeToShare && (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60 backdrop-blur-sm" onClick={() => setIsShareModalOpen(false)}>
+          <div className="bg-white rounded-t-3xl p-6 pb-12 flex flex-col gap-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-2" />
+            <h3 className="text-lg font-black text-gray-900">Compartilhar Conquista</h3>
+            
+            <div className="bg-orange-50 border border-orange-100 rounded-2xl p-4 mt-2">
+               <label className="text-[10px] font-black text-orange-800 uppercase tracking-widest mb-1.5 block">Enviar via SMS</label>
+               <div className="flex gap-2">
+                 <input 
+                   type="tel" 
+                   placeholder="DDD + Número (Ex: 4199999999)"
+                   value={smsPhone}
+                   onChange={e => setSmsPhone(e.target.value)}
+                   className="flex-1 px-4 py-3 rounded-xl text-sm font-bold text-gray-800 bg-white border border-gray-200 outline-none focus:border-orange-500 transition-colors"
+                 />
+                 <button 
+                   onClick={handleSmsShare}
+                   disabled={!smsPhone.trim()}
+                   className="px-5 py-3 rounded-xl text-white font-black text-sm transition-all disabled:opacity-50"
+                   style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}
+                 >
+                   Enviar
+                 </button>
+               </div>
+            </div>
+
+            <div className="flex items-center gap-4 my-2">
+              <div className="flex-1 h-px bg-gray-100" />
+              <span className="text-[10px] font-black text-gray-400 uppercase">Ou</span>
+              <div className="flex-1 h-px bg-gray-100" />
+            </div>
+
+            <button 
+              onClick={handleNativeShare} 
+              className="w-full py-4 flex items-center justify-center gap-2 rounded-2xl font-bold text-base border-2 transition-all active:scale-95" 
+              style={{ borderColor: '#EFEFEF', color: '#333', background: '#F9F9F9' }}
+            >
+              <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+              Outros (Insta, WhatsApp...)
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header com Gradiente e Ondas */}
       <div className="relative overflow-hidden px-6 pt-12 pb-16"
         style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
@@ -320,13 +413,20 @@ export default function ProfilePage() {
                       </div>
                     </div>
                     <div className="px-5 py-3 bg-gray-50/50 flex justify-between items-center">
-                       <p className="text-[10px] text-gray-500 font-bold">Visibilidade no Perfil:</p>
-                       <button 
-                         onClick={() => toggleVisibility(route.id, route.isPublic)}
-                         className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 ${route.isPublic ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-gray-200 text-gray-600 border border-gray-300'}`}
-                       >
-                         {route.isPublic ? '👁️ Público' : '🔒 Oculto'}
-                       </button>
+                       <div className="flex items-center gap-2">
+                         <button 
+                           onClick={() => openShareModal(route)}
+                           className="px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 bg-orange-100 text-orange-700 border border-orange-200"
+                         >
+                           🔗 Compartilhar
+                         </button>
+                         <button 
+                           onClick={() => toggleVisibility(route.id, route.isPublic)}
+                           className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 ${route.isPublic ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-gray-200 text-gray-600 border border-gray-300'}`}
+                         >
+                           {route.isPublic ? '👁️ Público' : '🔒 Oculto'}
+                         </button>
+                       </div>
                     </div>
                   </div>
                 )
