@@ -38,8 +38,13 @@ export async function POST(request: NextRequest, context: { params: Promise<{ se
         const sessionId = resolvedParams.sessionId
         const { content } = await request.json()
         
+        // Captura o token explicitamente 
+        const token = request.headers.get('Authorization')?.replace('Bearer ', '')
+        if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
         const supabase = await createClient()
-        const { data: { user } } = await supabase.auth.getUser()
+        const { data: { user } } = await supabase.auth.getUser(token)
+        
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
         const [dbUser] = await db.select().from(users).where(eq(users.supabaseAuthId, user.id)).limit(1)

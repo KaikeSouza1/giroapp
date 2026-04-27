@@ -85,7 +85,7 @@ export default function FeedPage() {
     load()
   }, [router, supabase.auth])
 
-  // Lógica de Busca com Debounce (Preservada conforme diretriz)
+  // Lógica de Busca com Debounce
   useEffect(() => {
     if (searchQuery.trim().length < 2) {
       setSearchResults([])
@@ -123,22 +123,30 @@ export default function FeedPage() {
     return `${Math.floor(hours / 24)}d atrás`
   }
 
-  // 🔥 FUNÇÃO DE LIKE
+  // 🔥 FUNÇÃO DE LIKE CORRIGIDA (Enviando o Token de Autorização)
   async function toggleLike(sessionId: string, currentLiked: boolean) {
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+
     setFeed(prev => prev.map(item => {
       if (item.id === sessionId) {
-        return { ...item, hasLiked: !currentLiked, likesCount: currentLiked ? item.likesCount - 1 : item.likesCount + 1 }
+        return { ...item, hasLiked: !currentLiked, likesCount: currentLiked ? Math.max(0, item.likesCount - 1) : item.likesCount + 1 }
       }
       return item
     }))
     try {
-      const res = await fetch(`/api/feed/${sessionId}/like`, { method: 'POST' })
+      const res = await fetch(`/api/feed/${sessionId}/like`, { 
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}` // Correção principal
+        }
+      })
       if (!res.ok) throw new Error("Erro da API")
     } catch (e) {
       console.error("Erro ao curtir", e)
       setFeed(prev => prev.map(item => {
         if (item.id === sessionId) {
-          return { ...item, hasLiked: currentLiked, likesCount: currentLiked ? item.likesCount + 1 : item.likesCount - 1 }
+          return { ...item, hasLiked: currentLiked, likesCount: currentLiked ? item.likesCount + 1 : Math.max(0, item.likesCount - 1) }
         }
         return item
       }))
@@ -162,23 +170,33 @@ export default function FeedPage() {
     }
   }
 
-  // 🔥 ENVIAR NOVO COMENTÁRIO
+  // 🔥 ENVIAR NOVO COMENTÁRIO CORRIGIDO (Enviando o Token)
   async function submitComment() {
     if (!newCommentText.trim() || !activeCommentSession) return
     setSubmittingComment(true)
+    
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+
     try {
       const res = await fetch(`/api/feed/${activeCommentSession}/comments`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` // Correção principal
+        },
         body: JSON.stringify({ content: newCommentText })
       })
       if (!res.ok) throw new Error("Erro ao salvar comentário")
+      
       const newComment = await res.json()
       setComments(prev => [...prev, newComment])
       setNewCommentText('')
+      
       setFeed(prev => prev.map(item => {
         if (item.id === activeCommentSession) {
-          return { ...item, commentsCount: item.commentsCount + 1 }
+          // Garante que é número e soma
+          return { ...item, commentsCount: Number(item.commentsCount) + 1 }
         }
         return item
       }))
@@ -282,7 +300,7 @@ export default function FeedPage() {
         </div>
       </div>
 
-      {/* Resultados da Pesquisa Flutuantes (Efeito Glass) */}
+      {/* Resultados da Pesquisa Flutuantes */}
       {searchQuery.trim().length >= 2 && (
         <div className="absolute left-6 right-6 z-[60] mt-[-10px] bg-white rounded-[24px] shadow-2xl border border-gray-100 overflow-hidden max-h-80 overflow-y-auto animate-in fade-in slide-in-from-top-4 duration-300">
           {searchResults.length > 0 ? (
@@ -340,7 +358,7 @@ export default function FeedPage() {
                   </div>
                 </Link>
 
-                {/* Estatísticas Rápidas do Card (MANTIDAS EXATAMENTE COMO NO SEU ARQUIVO) */}
+                {/* Estatísticas Rápidas */}
                 <div className="flex items-center gap-6 px-6 py-4 bg-gray-50/50 border-b border-gray-50">
                   <div className="flex flex-col">
                     <span className="text-gray-400 text-[9px] uppercase font-black tracking-widest mb-0.5">Distância</span>
