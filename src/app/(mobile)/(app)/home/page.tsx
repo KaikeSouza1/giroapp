@@ -246,7 +246,7 @@ export default function HomePage() {
         </div>
 
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-black text-gray-900">Rotas Criadas por Orgs</h2>
+          <h2 className="text-base font-black text-gray-900">Rotas Oficiais</h2>
           <Link href="/map" className="text-xs font-bold active:scale-95 transition-transform" style={{ color: '#E05300' }}>
             Explorar Mapa →
           </Link>
@@ -255,7 +255,7 @@ export default function HomePage() {
         {filteredRoutes.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl" style={{ background: '#FFF0EB' }}>🗺️</div>
-            <p className="text-gray-500 font-semibold text-sm">Nenhuma rota oficial disponível</p>
+            <p className="text-gray-500 font-semibold text-sm">Nenhuma rota disponível</p>
           </div>
         ) : (
           <div className="flex flex-col gap-4">
