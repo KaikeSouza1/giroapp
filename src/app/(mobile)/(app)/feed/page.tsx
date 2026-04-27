@@ -66,7 +66,6 @@ export default function FeedPage() {
     async function load() {
       const { data: { session }, error } = await supabase.auth.getSession()
       
-      // Se houver erro de token ou não tiver sessão, manda pro login
       if (error || !session) { 
         console.error("Erro de sessão no carregamento:", error);
         router.push('/login'); 
@@ -81,7 +80,17 @@ export default function FeedPage() {
         if (!res.ok) throw new Error(`Erro API: ${res.status}`)
           
         const data = await res.json()
-        const officialRoutes = Array.isArray(data) ? data.filter((i: any) => i.routeId !== null) : []
+        // FIX: Garante que likesCount e commentsCount são sempre números
+        const officialRoutes = Array.isArray(data)
+          ? data
+              .filter((i: any) => i.routeId !== null)
+              .map((i: any) => ({
+                ...i,
+                likesCount: Number(i.likesCount) || 0,
+                commentsCount: Number(i.commentsCount) || 0,
+                hasLiked: i.hasLiked === true || String(i.hasLiked) === 'true',
+              }))
+          : []
         setFeed(officialRoutes)
       } catch (err) {
         console.error("Erro ao carregar feed", err)
@@ -90,7 +99,7 @@ export default function FeedPage() {
       }
     }
     load()
-  }, [router, supabase.auth])
+  }, [router, supabase])
 
   // Busca com Debounce
   useEffect(() => {
@@ -121,7 +130,7 @@ export default function FeedPage() {
     }, 500)
 
     return () => { if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current) }
-  }, [searchQuery, supabase.auth])
+  }, [searchQuery, supabase])
 
   function timeAgo(dateStr: string) {
     const diff = Date.now() - new Date(dateStr).getTime()
@@ -132,56 +141,71 @@ export default function FeedPage() {
     return `${Math.floor(hours / 24)}d atrás`
   }
 
-  // 🔥 LIKE COM VERIFICAÇÃO DE SESSÃO RÍGIDA
+  // FIX: toggleLike reescrito para expor erros reais e usar token sempre fresco
   async function toggleLike(sessionId: string, currentLiked: boolean) {
     const { data: { session }, error } = await supabase.auth.getSession()
     
-    // Se a sessão estiver bugada, avisa o usuário e aborta
     if (error || !session) {
-      alert("Sua sessão expirou! Por favor, saia do app e faça login novamente.")
+      alert("Sua sessão expirou! Por favor, faça login novamente.")
+      router.push('/login')
       return
     }
 
-    const token = session.access_token
-
-    // Atualização Otimista no Visual
-    setFeed(prev => prev.map(item => {
-      if (item.id === sessionId) {
-        return { 
-          ...item, 
-          hasLiked: !currentLiked, 
-          likesCount: currentLiked ? Math.max(0, item.likesCount - 1) : item.likesCount + 1 
-        }
-      }
-      return item
-    }))
+    // Atualização otimista
+    setFeed(prev => prev.map(item =>
+      item.id === sessionId
+        ? { 
+            ...item, 
+            hasLiked: !currentLiked, 
+            likesCount: currentLiked ? Math.max(0, item.likesCount - 1) : item.likesCount + 1 
+          }
+        : item
+    ))
 
     try {
       const res = await fetch(`/api/feed/${sessionId}/like`, { 
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        }
       })
       
-      if (!res.ok) throw new Error("Erro da API ao curtir")
-    } catch (e) {
-      console.error("Erro ao curtir", e)
-      alert("Não foi possível curtir a publicação.")
-      
-      // Reverte o visual em caso de falha
-      setFeed(prev => prev.map(item => {
-        if (item.id === sessionId) {
-          return { 
-            ...item, 
-            hasLiked: currentLiked, 
-            likesCount: currentLiked ? item.likesCount + 1 : Math.max(0, item.likesCount - 1) 
-          }
-        }
-        return item
-      }))
+      if (!res.ok) {
+        // FIX: Lê o corpo do erro para debug real
+        const body = await res.json().catch(() => ({}))
+        console.error("Erro ao curtir:", res.status, body)
+        throw new Error(`Status ${res.status}: ${body?.error ?? 'Erro desconhecido'}`)
+      }
+
+      // FIX: Usa o valor retornado pela API para garantir sincronia
+      const result = await res.json()
+      setFeed(prev => prev.map(item =>
+        item.id === sessionId
+          ? { 
+              ...item, 
+              hasLiked: result.liked,
+              // Se a API retornar o novo total, usa. Senão mantém o otimista.
+              likesCount: result.likesCount != null ? Number(result.likesCount) : item.likesCount
+            }
+          : item
+      ))
+    } catch (e: any) {
+      console.error("Erro ao curtir:", e)
+      // Reverte o visual
+      setFeed(prev => prev.map(item =>
+        item.id === sessionId
+          ? { 
+              ...item, 
+              hasLiked: currentLiked, 
+              likesCount: currentLiked ? item.likesCount + 1 : Math.max(0, item.likesCount - 1) 
+            }
+          : item
+      ))
+      alert(`Não foi possível curtir: ${e.message}`)
     }
   }
 
-  // 🔥 COMENTÁRIOS COM VERIFICAÇÃO RÍGIDA
   async function openComments(sessionId: string) {
     setActiveCommentSession(sessionId)
     setLoadingComments(true)
@@ -208,39 +232,41 @@ export default function FeedPage() {
     const { data: { session }, error } = await supabase.auth.getSession()
     
     if (error || !session) {
-      alert("Sua sessão expirou! Por favor, saia do app e faça login novamente.")
+      alert("Sua sessão expirou! Por favor, faça login novamente.")
+      router.push('/login')
       return
     }
 
     setSubmittingComment(true)
-    const token = session.access_token
 
     try {
       const res = await fetch(`/api/feed/${activeCommentSession}/comments`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` 
+          'Authorization': `Bearer ${session.access_token}` 
         },
         body: JSON.stringify({ content: newCommentText })
       })
       
-      if (!res.ok) throw new Error("Erro ao salvar comentário")
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(`Status ${res.status}: ${body?.error ?? 'Erro desconhecido'}`)
+      }
       
       const newComment = await res.json()
       setComments(prev => [...prev, newComment])
       setNewCommentText('')
       
-      // Atualiza o contador no Feed principal instantaneamente
-      setFeed(prev => prev.map(item => {
-        if (item.id === activeCommentSession) {
-          return { ...item, commentsCount: Number(item.commentsCount) + 1 }
-        }
-        return item
-      }))
-    } catch (e) {
-      console.error("Erro ao enviar comentário", e)
-      alert("Erro ao enviar comentário. Tente novamente.")
+      // FIX: Usa adição segura com Number() para evitar NaN ou concatenação de string
+      setFeed(prev => prev.map(item =>
+        item.id === activeCommentSession
+          ? { ...item, commentsCount: (Number(item.commentsCount) || 0) + 1 }
+          : item
+      ))
+    } catch (e: any) {
+      console.error("Erro ao enviar comentário:", e)
+      alert(`Erro ao enviar comentário: ${e.message}`)
     } finally {
       setSubmittingComment(false)
     }
@@ -300,13 +326,11 @@ export default function FeedPage() {
           </div>
         </div>
       )}
-      {/* ── FIM DO MODAL ── */}
 
-      {/* Header Premium com Gradiente Giro */}
+      {/* Header */}
       <div className="relative overflow-hidden px-6 pt-12 pb-8" 
         style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
         
-        {/* Padrão de Grid Visual */}
         <div className="absolute inset-0 opacity-10">
            <svg width="100%" height="100%"><pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse"><path d="M 30 0 L 0 0 0 30" fill="none" stroke="white" strokeWidth="1.5" /></pattern><rect width="100%" height="100%" fill="url(#grid)" /></svg>
         </div>
@@ -339,7 +363,7 @@ export default function FeedPage() {
         </div>
       </div>
 
-      {/* Resultados da Pesquisa Flutuantes */}
+      {/* Resultados da Pesquisa */}
       {searchQuery.trim().length >= 2 && (
         <div className="absolute left-6 right-6 z-[60] mt-[-10px] bg-white rounded-[24px] shadow-2xl border border-gray-100 overflow-hidden max-h-80 overflow-y-auto animate-in fade-in slide-in-from-top-4 duration-300">
           {searchResults.length > 0 ? (
@@ -360,7 +384,7 @@ export default function FeedPage() {
         </div>
       )}
 
-      {/* Listagem do Feed */}
+      {/* Feed */}
       <div className="px-5 pt-6 pb-12">
         {loading ? (
           <div className="flex justify-center py-20"><div className="w-10 h-10 border-3 border-orange-500 border-t-transparent rounded-full animate-spin" /></div>
@@ -368,7 +392,6 @@ export default function FeedPage() {
           <div className="flex flex-col gap-8">
             {feed.map(item => (
               <div key={item.id} className="bg-white rounded-[32px] overflow-hidden shadow-sm border border-gray-100">
-                {/* Header do Post */}
                 <Link href={`/profile/${item.userId}`}>
                   <div className="flex items-center gap-3 px-5 py-4">
                     <div className="relative">
@@ -383,7 +406,6 @@ export default function FeedPage() {
                   </div>
                 </Link>
 
-                {/* Imagem de Capa e Rota */}
                 <Link href={`/routes/${item.routeId}`}>
                   <div className="w-full h-64 relative overflow-hidden">
                     <img src={item.coverImageUrl || ''} className="w-full h-full object-cover transition-transform duration-500 hover:scale-105" />
@@ -397,7 +419,6 @@ export default function FeedPage() {
                   </div>
                 </Link>
 
-                {/* Estatísticas Rápidas */}
                 <div className="flex items-center gap-6 px-6 py-4 bg-gray-50/50 border-b border-gray-50">
                   <div className="flex flex-col">
                     <span className="text-gray-400 text-[9px] uppercase font-black tracking-widest mb-0.5">Distância</span>
@@ -410,9 +431,7 @@ export default function FeedPage() {
                   </div>
                 </div>
 
-                {/* 🔥 BARRA DE INTERAÇÕES COM BOTÕES FUNCIONAIS */}
                 <div className="px-6 py-4 flex items-center gap-6">
-                  {/* Botão de Curtir */}
                   <button onClick={() => toggleLike(item.id, item.hasLiked)} className="flex items-center gap-2 transition-all active:scale-95 group">
                     {item.hasLiked ? (
                       <svg width="24" height="24" fill="#ef4444" stroke="#ef4444" strokeWidth="2" viewBox="0 0 24 24" className="drop-shadow-sm"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
@@ -422,10 +441,9 @@ export default function FeedPage() {
                     <span className={`text-sm font-black ${item.hasLiked ? 'text-red-500' : 'text-gray-500'}`}>{item.likesCount}</span>
                   </button>
 
-                  {/* Botão de Comentários */}
                   <button onClick={() => openComments(item.id)} className="flex items-center gap-2 transition-all active:scale-95 group">
                     <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="text-gray-400 group-hover:text-orange-500 transition-colors"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-                    <span className="text-sm font-black text-gray-500">{item.commentsCount}</span>
+                    <span className="text-sm font-black text-gray-500">{Number(item.commentsCount) || 0}</span>
                   </button>
                 </div>
               </div>
