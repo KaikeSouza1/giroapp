@@ -1,11 +1,9 @@
-
-import RoutesClient from './RoutesClient'
-
+import RoutesClient from "./RoutesClient";
 
 export function generateStaticParams() {
-  return [] 
+  return [];
 }
 
 export default function Page({ params }: { params: Promise<{ id: string }> }) {
-  return <RoutesClient params={params} />
+  return <RoutesClient params={params} />;
 }

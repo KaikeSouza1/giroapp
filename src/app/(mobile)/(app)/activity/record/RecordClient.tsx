@@ -1,7 +1,7 @@
-'use client'
+"use client";
 
-import { useEffect, useRef, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useRef, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   useActivityStore,
   formatPace,
@@ -9,82 +9,90 @@ import {
   getElapsedMs,
   ACTIVITY_META,
   Coordinate,
-} from '@/store/activityStore'
+} from "@/store/activityStore";
 
-const REQUIRED_ACCURACY_METERS = 20 
+const REQUIRED_ACCURACY_METERS = 20;
 
 export default function RecordClient() {
-  const router = useRouter()
-  const store = useActivityStore()
+  const router = useRouter();
+  const store = useActivityStore();
 
-  
-  const [elapsedMs, setElapsedMs] = useState(0)
-  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null)
-  const [currentLoc, setCurrentLoc] = useState<{lat: number, lng: number} | null>(null)
-  const [mapReady, setMapReady] = useState(false)
-  const [autoPauseWarning, setAutoPauseWarning] = useState(false)
-  const [showStopModal, setShowStopModal] = useState(false)
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
+  const [currentLoc, setCurrentLoc] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
+  const [mapReady, setMapReady] = useState(false);
+  const [autoPauseWarning, setAutoPauseWarning] = useState(false);
+  const [showStopModal, setShowStopModal] = useState(false);
 
-  
-  const [isFinishing, setIsFinishing] = useState(false)
+  const [isFinishing, setIsFinishing] = useState(false);
 
-  
-  const mapContainerRef = useRef<HTMLDivElement>(null)
-  const mapRef = useRef<any>(null)
-  const polylineRef = useRef<any>(null)
-  const markerRef = useRef<any>(null)
-  const watchIdRef = useRef<string | null>(null)
-  const timerRef = useRef<NodeJS.Timeout | null>(null)
-  
-  const lowSpeedCountRef = useRef(0)
-  const autoPauseRef = useRef(false)
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<any>(null);
+  const polylineRef = useRef<any>(null);
+  const markerRef = useRef<any>(null);
+  const watchIdRef = useRef<string | null>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const { status, activityType, coordinates, startTime, pausedDuration, pauseStartTime } = store
+  const lowSpeedCountRef = useRef(0);
+  const autoPauseRef = useRef(false);
+
+  const {
+    status,
+    activityType,
+    coordinates,
+    startTime,
+    pausedDuration,
+    pauseStartTime,
+  } = store;
 
   useEffect(() => {
     if (!activityType) {
-      router.replace('/activity')
+      router.replace("/activity");
     }
-  }, [activityType, router])
+  }, [activityType, router]);
 
-  
   useEffect(() => {
     timerRef.current = setInterval(() => {
-      setElapsedMs(getElapsedMs(startTime, pausedDuration, pauseStartTime))
-    }, 1000)
+      setElapsedMs(getElapsedMs(startTime, pausedDuration, pauseStartTime));
+    }, 1000);
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
-    }
-  }, [startTime, pausedDuration, pauseStartTime])
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [startTime, pausedDuration, pauseStartTime]);
 
-  
   useEffect(() => {
-    if (!mapContainerRef.current || mapRef.current) return
+    if (!mapContainerRef.current || mapRef.current) return;
 
     async function initMap() {
-      const L = (await import('leaflet')).default
-      await import('leaflet/dist/leaflet.css')
+      const L = (await import("leaflet")).default;
+      await import("leaflet/dist/leaflet.css");
 
       const map = L.map(mapContainerRef.current!, {
         center: [-23.5505, -46.6333],
         zoom: 16,
         zoomControl: false,
         attributionControl: false,
-      })
+      });
 
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap &copy; CARTO',
-        maxZoom: 19,
-      }).addTo(map)
+      L.tileLayer(
+        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+        {
+          attribution: "&copy; OpenStreetMap &copy; CARTO",
+          maxZoom: 19,
+        }
+      ).addTo(map);
 
       const poly = L.polyline([], {
-        color: '#FF6B35',
+        color: "#FF6B35",
         weight: 4,
         opacity: 0.9,
-        lineCap: 'round',
-        lineJoin: 'round',
-      }).addTo(map)
-      polylineRef.current = poly
+        lineCap: "round",
+        lineJoin: "round",
+      }).addTo(map);
+      polylineRef.current = poly;
 
       const markerIcon = L.divIcon({
         html: `<div style="
@@ -94,188 +102,212 @@ export default function RecordClient() {
           border:3px solid white;
           box-shadow:0 0 0 4px rgba(224,83,0,0.35);
         "></div>`,
-        className: '',
+        className: "",
         iconSize: [18, 18],
         iconAnchor: [9, 9],
-      })
-      const m = L.marker([-23.5505, -46.6333], { icon: markerIcon, zIndexOffset: 1000 }).addTo(map)
-      markerRef.current = m
+      });
+      const m = L.marker([-23.5505, -46.6333], {
+        icon: markerIcon,
+        zIndexOffset: 1000,
+      }).addTo(map);
+      markerRef.current = m;
 
-      mapRef.current = map
-      setMapReady(true)
+      mapRef.current = map;
+      setMapReady(true);
     }
 
-    initMap()
-  }, [])
+    initMap();
+  }, []);
 
   // ── Atualização do Mapa (Marcador e Câmera) ───────────────────────────────
   useEffect(() => {
-    if (!mapRef.current || !markerRef.current || !polylineRef.current) return
+    if (!mapRef.current || !markerRef.current || !polylineRef.current) return;
 
     if (currentLoc) {
-      markerRef.current.setLatLng([currentLoc.lat, currentLoc.lng])
+      markerRef.current.setLatLng([currentLoc.lat, currentLoc.lng]);
     }
 
     if (coordinates.length > 0) {
-      const latlngs = coordinates.map((c) => [c.lat, c.lng] as [number, number])
-      polylineRef.current.setLatLngs(latlngs)
-      
-      const last = coordinates[coordinates.length - 1]
-      mapRef.current.panTo([last.lat, last.lng], { animate: true, duration: 0.5 })
-    } 
-    else if (currentLoc) {
-      mapRef.current.panTo([currentLoc.lat, currentLoc.lng], { animate: true, duration: 0.5 })
+      const latlngs = coordinates.map(
+        (c) => [c.lat, c.lng] as [number, number]
+      );
+      polylineRef.current.setLatLngs(latlngs);
+
+      const last = coordinates[coordinates.length - 1];
+      mapRef.current.panTo([last.lat, last.lng], {
+        animate: true,
+        duration: 0.5,
+      });
+    } else if (currentLoc) {
+      mapRef.current.panTo([currentLoc.lat, currentLoc.lng], {
+        animate: true,
+        duration: 0.5,
+      });
     }
-  }, [coordinates.length, currentLoc])
+  }, [coordinates.length, currentLoc]);
 
   // ── GPS watch ─────────────────────────────────────────────────────────────
   const startGpsWatch = useCallback(async () => {
     try {
-      const { Geolocation } = await import('@capacitor/geolocation')
+      const { Geolocation } = await import("@capacitor/geolocation");
 
       watchIdRef.current = await Geolocation.watchPosition(
-        { 
-          enableHighAccuracy: true, 
+        {
+          enableHighAccuracy: true,
           timeout: 10000,
-          maximumAge: 0
+          maximumAge: 0,
         },
         (pos, err) => {
-          if (err || !pos) return
+          if (err || !pos) return;
 
-          const accuracy = pos.coords.accuracy
-          setGpsAccuracy(accuracy)
+          const accuracy = pos.coords.accuracy;
+          setGpsAccuracy(accuracy);
 
-          const lat = pos.coords.latitude
-          const lng = pos.coords.longitude
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
 
-          if (lat === 0 && lng === 0) return
+          if (lat === 0 && lng === 0) return;
 
-          setCurrentLoc({ lat, lng })
+          setCurrentLoc({ lat, lng });
 
-          const currentState = useActivityStore.getState()
+          const currentState = useActivityStore.getState();
 
-          if (currentState.status === 'idle') {
+          if (currentState.status === "idle") {
             if (accuracy <= REQUIRED_ACCURACY_METERS) {
-              currentState.startActivity()
+              currentState.startActivity();
             }
-            return
+            return;
           }
 
-          if (currentState.status === 'running') {
+          if (currentState.status === "running") {
             const coord: Coordinate = {
               lat,
               lng,
               accuracy,
               timestamp: Date.now(),
               altitude: pos.coords.altitude,
-            }
+            };
 
             if (currentState.currentSpeedKmH < 1.0 && accuracy < 30) {
-              lowSpeedCountRef.current++
+              lowSpeedCountRef.current++;
               if (lowSpeedCountRef.current >= 4) {
-                autoPauseRef.current = true
-                useActivityStore.getState().pauseActivity(true)
-                setAutoPauseWarning(true)
-                setTimeout(() => setAutoPauseWarning(false), 3000)
+                autoPauseRef.current = true;
+                useActivityStore.getState().pauseActivity(true);
+                setAutoPauseWarning(true);
+                setTimeout(() => setAutoPauseWarning(false), 3000);
               }
             } else if (currentState.currentSpeedKmH >= 1.0) {
-              lowSpeedCountRef.current = 0
+              lowSpeedCountRef.current = 0;
               if (autoPauseRef.current) {
-                autoPauseRef.current = false
-                useActivityStore.getState().resumeActivity()
+                autoPauseRef.current = false;
+                useActivityStore.getState().resumeActivity();
               }
             }
 
-            useActivityStore.getState().addCoordinate(coord)
+            useActivityStore.getState().addCoordinate(coord);
           }
         }
-      )
+      );
     } catch (err) {
-      console.error('GPS error:', err)
+      console.error("GPS error:", err);
     }
-  }, [])
+  }, []);
 
   const stopGpsWatch = useCallback(async () => {
-    if (timerRef.current) clearInterval(timerRef.current)
+    if (timerRef.current) clearInterval(timerRef.current);
     if (watchIdRef.current) {
       try {
-        const { Geolocation } = await import('@capacitor/geolocation')
-        await Geolocation.clearWatch({ id: watchIdRef.current })
+        const { Geolocation } = await import("@capacitor/geolocation");
+        await Geolocation.clearWatch({ id: watchIdRef.current });
       } catch {}
-      watchIdRef.current = null
+      watchIdRef.current = null;
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
-    startGpsWatch()
+    startGpsWatch();
     return () => {
-      stopGpsWatch()
-    }
-  }, [startGpsWatch, stopGpsWatch])
+      stopGpsWatch();
+    };
+  }, [startGpsWatch, stopGpsWatch]);
 
-  
   function handleStop() {
-    
-    setShowStopModal(false)
-    setIsFinishing(true)
+    setShowStopModal(false);
+    setIsFinishing(true);
 
-    
     if (mapRef.current) {
-      try { mapRef.current.remove() } catch (e) {}
-      mapRef.current = null
+      try {
+        mapRef.current.remove();
+      } catch (e) {}
+      mapRef.current = null;
     }
 
     if (mapContainerRef.current) {
-      mapContainerRef.current.style.display = 'none'
-      mapContainerRef.current.innerHTML = ''
+      mapContainerRef.current.style.display = "none";
+      mapContainerRef.current.innerHTML = "";
     }
 
-    const mapEl = document.getElementById('map-container-record')
+    const mapEl = document.getElementById("map-container-record");
     if (mapEl) {
-      mapEl.style.display = 'none'
-      mapEl.innerHTML = ''
+      mapEl.style.display = "none";
+      mapEl.innerHTML = "";
     }
 
     // 2. requestAnimationFrame garante que o React desenhe a tela preta de isFinishing
     // antes de travarmos a main thread com stopActivity e o replace.
     requestAnimationFrame(() => {
       setTimeout(async () => {
-        await stopGpsWatch()
-        store.stopActivity()
-        router.replace('/activity/summary')
-      }, 50)
-    })
+        await stopGpsWatch();
+        store.stopActivity();
+        router.replace("/activity/summary");
+      }, 50);
+    });
   }
 
   function handlePauseResume() {
-    if (status === 'idle') return
-    if (status === 'running') {
-      store.pauseActivity()
-    } else if (status === 'pausado') {
-      store.resumeActivity()
+    if (status === "idle") return;
+    if (status === "running") {
+      store.pauseActivity();
+    } else if (status === "pausado") {
+      store.resumeActivity();
     }
   }
 
-  const meta = activityType ? ACTIVITY_META[activityType] : null
-  const distDisplay = store.distanceKm.toFixed(2)
-  const paceDisplay = formatPace(store.currentPaceSecPerKm)
-  const speedDisplay = store.currentSpeedKmH.toFixed(1)
-  const timeDisplay = formatElapsed(elapsedMs)
+  const meta = activityType ? ACTIVITY_META[activityType] : null;
+  const distDisplay = store.distanceKm.toFixed(2);
+  const paceDisplay = formatPace(store.currentPaceSecPerKm);
+  const speedDisplay = store.currentSpeedKmH.toFixed(1);
+  const timeDisplay = formatElapsed(elapsedMs);
 
-  const accColor =
-    !gpsAccuracy ? '#888' :
-    gpsAccuracy <= 15 ? '#22C55E' :
-    gpsAccuracy <= 30 ? '#EAB308' : '#EF4444'
+  const accColor = !gpsAccuracy
+    ? "#888"
+    : gpsAccuracy <= 15
+    ? "#22C55E"
+    : gpsAccuracy <= 30
+    ? "#EAB308"
+    : "#EF4444";
 
   return (
-    <div className="min-h-screen flex flex-col font-[family-name:var(--font-dm)] select-none relative" style={{ background: '#080808' }}>
-      
+    <div
+      className="min-h-screen flex flex-col font-[family-name:var(--font-dm)] select-none relative"
+      style={{ background: "#080808" }}
+    >
       {}
       {isFinishing && (
         <div className="absolute inset-0 z-[9999] flex flex-col items-center justify-center bg-[#080808]">
-          <div className="w-16 h-16 rounded-full animate-spin mb-6" style={{ border: '4px solid rgba(255,255,255,0.05)', borderTop: '4px solid #E05300' }} />
-          <h2 className="text-white font-black text-2xl animate-pulse">Salvando treino...</h2>
-          <p className="text-white/40 text-sm mt-2 font-medium">Preparando suas estatísticas</p>
+          <div
+            className="w-16 h-16 rounded-full animate-spin mb-6"
+            style={{
+              border: "4px solid rgba(255,255,255,0.05)",
+              borderTop: "4px solid #E05300",
+            }}
+          />
+          <h2 className="text-white font-black text-2xl animate-pulse">
+            Salvando treino...
+          </h2>
+          <p className="text-white/40 text-sm mt-2 font-medium">
+            Preparando suas estatísticas
+          </p>
         </div>
       )}
 
@@ -284,11 +316,26 @@ export default function RecordClient() {
         <div className="absolute inset-0 z-[100] flex items-center justify-center px-6 bg-black/80 backdrop-blur-sm">
           <div className="bg-[#1A1A1A] border border-white/10 rounded-3xl p-6 w-full max-w-sm shadow-2xl">
             <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4">
-               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#EF4444"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+                <line x1="12" y1="2" x2="12" y2="12"></line>
+              </svg>
             </div>
-            <h3 className="text-white font-black text-xl mb-2 text-center">Encerrar Atividade?</h3>
+            <h3 className="text-white font-black text-xl mb-2 text-center">
+              Encerrar Atividade?
+            </h3>
             <p className="text-white/60 text-sm text-center mb-6 font-medium">
-              O tempo e a gravação serão finalizados para você gerar sua imagem do Instagram.
+              O tempo e a gravação serão finalizados para você gerar sua imagem
+              do Instagram.
             </p>
             <div className="flex gap-3">
               <button
@@ -310,10 +357,17 @@ export default function RecordClient() {
 
       {}
       {autoPauseWarning && !isFinishing && (
-        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-full flex items-center gap-2 shadow-xl"
-          style={{ background: '#1A1A1A', border: '1px solid rgba(255,255,255,0.1)' }}>
+        <div
+          className="absolute top-14 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-full flex items-center gap-2 shadow-xl"
+          style={{
+            background: "#1A1A1A",
+            border: "1px solid rgba(255,255,255,0.1)",
+          }}
+        >
           <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
-          <p className="text-white text-xs font-bold">Pausa automática ativada</p>
+          <p className="text-white text-xs font-bold">
+            Pausa automática ativada
+          </p>
         </div>
       )}
 
@@ -324,9 +378,17 @@ export default function RecordClient() {
           <div>
             <p className="text-white font-black text-sm">{meta?.label}</p>
             <div className="flex items-center gap-1.5 mt-0.5">
-              <div className="w-1.5 h-1.5 rounded-full" style={{ background: accColor }} />
-              <p className="text-[10px] font-semibold" style={{ color: accColor }}>
-                {gpsAccuracy ? `GPS ±${Math.round(gpsAccuracy)}m` : 'Buscando sinal...'}
+              <div
+                className="w-1.5 h-1.5 rounded-full"
+                style={{ background: accColor }}
+              />
+              <p
+                className="text-[10px] font-semibold"
+                style={{ color: accColor }}
+              >
+                {gpsAccuracy
+                  ? `GPS ±${Math.round(gpsAccuracy)}m`
+                  : "Buscando sinal..."}
               </p>
             </div>
           </div>
@@ -335,22 +397,56 @@ export default function RecordClient() {
         <div
           className="px-3 py-1.5 rounded-full flex items-center gap-1.5"
           style={{
-            background: status === 'idle' ? 'rgba(234,179,8,0.15)' : status === 'pausado' ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)',
-            border: `1px solid ${status === 'idle' ? 'rgba(234,179,8,0.3)' : status === 'pausado' ? 'rgba(239,68,68,0.3)' : 'rgba(34,197,94,0.3)'}`,
+            background:
+              status === "idle"
+                ? "rgba(234,179,8,0.15)"
+                : status === "pausado"
+                ? "rgba(239,68,68,0.15)"
+                : "rgba(34,197,94,0.15)",
+            border: `1px solid ${
+              status === "idle"
+                ? "rgba(234,179,8,0.3)"
+                : status === "pausado"
+                ? "rgba(239,68,68,0.3)"
+                : "rgba(34,197,94,0.3)"
+            }`,
           }}
         >
           <div
             className="w-1.5 h-1.5 rounded-full"
             style={{
-              background: status === 'idle' ? '#EAB308' : status === 'pausado' ? '#EF4444' : '#22C55E',
-              animation: status === 'running' ? 'pulse 2s infinite' : status === 'idle' ? 'ping 1.5s infinite' : 'none',
+              background:
+                status === "idle"
+                  ? "#EAB308"
+                  : status === "pausado"
+                  ? "#EF4444"
+                  : "#22C55E",
+              animation:
+                status === "running"
+                  ? "pulse 2s infinite"
+                  : status === "idle"
+                  ? "ping 1.5s infinite"
+                  : "none",
             }}
           />
           <p
             className="text-xs font-black"
-            style={{ color: status === 'idle' ? '#EAB308' : status === 'pausado' ? '#EF4444' : '#22C55E' }}
+            style={{
+              color:
+                status === "idle"
+                  ? "#EAB308"
+                  : status === "pausado"
+                  ? "#EF4444"
+                  : "#22C55E",
+            }}
           >
-            {status === 'idle' ? 'AGUARDANDO GPS' : status === 'running' ? 'GRAVANDO' : store.isAutoPaused ? 'AUTO PAUSA' : 'PAUSADO'}
+            {status === "idle"
+              ? "AGUARDANDO GPS"
+              : status === "running"
+              ? "GRAVANDO"
+              : store.isAutoPaused
+              ? "AUTO PAUSA"
+              : "PAUSADO"}
           </p>
         </div>
       </div>
@@ -359,10 +455,11 @@ export default function RecordClient() {
         <p
           className="font-black leading-none tabular-nums"
           style={{
-            fontSize: 'clamp(52px, 16vw, 72px)',
-            background: 'linear-gradient(135deg, #ffffff 0%, rgba(255,255,255,0.6) 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
+            fontSize: "clamp(52px, 16vw, 72px)",
+            background:
+              "linear-gradient(135deg, #ffffff 0%, rgba(255,255,255,0.6) 100%)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
           }}
         >
           {timeDisplay}
@@ -371,57 +468,87 @@ export default function RecordClient() {
 
       <div className="flex px-5 pb-4 gap-3">
         {[
-          { label: 'KM', value: distDisplay, sub: 'Distância' },
-          { label: 'min/km', value: paceDisplay, sub: 'Pace atual' },
-          { label: 'km/h', value: speedDisplay, sub: 'Velocidade' },
+          { label: "KM", value: distDisplay, sub: "Distância" },
+          { label: "min/km", value: paceDisplay, sub: "Pace atual" },
+          { label: "km/h", value: speedDisplay, sub: "Velocidade" },
         ].map((s) => (
           <div
             key={s.label}
             className="flex-1 rounded-2xl p-3 text-center"
-            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.07)' }}
+            style={{
+              background: "rgba(255,255,255,0.06)",
+              border: "1px solid rgba(255,255,255,0.07)",
+            }}
           >
-            <p className="text-white font-black text-xl leading-none tabular-nums">{s.value}</p>
-            <p className="text-white/30 text-[9px] font-bold uppercase tracking-wider mt-1">{s.sub}</p>
+            <p className="text-white font-black text-xl leading-none tabular-nums">
+              {s.value}
+            </p>
+            <p className="text-white/30 text-[9px] font-bold uppercase tracking-wider mt-1">
+              {s.sub}
+            </p>
           </div>
         ))}
       </div>
 
       {}
-      <div className="flex-1 mx-5 rounded-3xl overflow-hidden relative" style={{ minHeight: 200 }}>
-        <div id="map-container-record" ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
+      <div
+        className="flex-1 mx-5 rounded-3xl overflow-hidden relative"
+        style={{ minHeight: 200 }}
+      >
+        <div
+          id="map-container-record"
+          ref={mapContainerRef}
+          className="absolute inset-0 w-full h-full"
+        />
 
-        {status === 'idle' && (
+        {status === "idle" && (
           <div
             className="absolute inset-0 flex flex-col items-center justify-center z-50 backdrop-blur-sm"
-            style={{ background: 'rgba(8,8,8,0.85)' }}
+            style={{ background: "rgba(8,8,8,0.85)" }}
           >
             <div
               className="w-12 h-12 rounded-full animate-spin mb-4"
-              style={{ border: '3px solid rgba(255,255,255,0.1)', borderTop: '3px solid #EAB308' }}
+              style={{
+                border: "3px solid rgba(255,255,255,0.1)",
+                borderTop: "3px solid #EAB308",
+              }}
             />
-            <p className="text-white font-black text-lg text-center px-4">Buscando sinal GPS...</p>
+            <p className="text-white font-black text-lg text-center px-4">
+              Buscando sinal GPS...
+            </p>
             <p className="text-white/60 text-xs mt-2 font-bold text-center px-6">
-              Vá para uma área a céu aberto.<br/>
-              Precisão: <span style={{ color: accColor }}>{gpsAccuracy ? `${Math.round(gpsAccuracy)}m` : '--'}</span> (Alvo: {REQUIRED_ACCURACY_METERS}m)
+              Vá para uma área a céu aberto.
+              <br />
+              Precisão:{" "}
+              <span style={{ color: accColor }}>
+                {gpsAccuracy ? `${Math.round(gpsAccuracy)}m` : "--"}
+              </span>{" "}
+              (Alvo: {REQUIRED_ACCURACY_METERS}m)
             </p>
           </div>
         )}
 
-        {!mapReady && status !== 'idle' && (
+        {!mapReady && status !== "idle" && (
           <div
             className="absolute inset-0 flex items-center justify-center"
-            style={{ background: '#111' }}
+            style={{ background: "#111" }}
           >
             <div
               className="w-8 h-8 rounded-full animate-spin"
-              style={{ border: '2px solid rgba(255,255,255,0.1)', borderTop: '2px solid #E05300' }}
+              style={{
+                border: "2px solid rgba(255,255,255,0.1)",
+                borderTop: "2px solid #E05300",
+              }}
             />
           </div>
         )}
 
         <div
           className="absolute bottom-0 left-0 right-0 h-16 pointer-events-none"
-          style={{ background: 'linear-gradient(to bottom, transparent, rgba(8,8,8,0.8))' }}
+          style={{
+            background:
+              "linear-gradient(to bottom, transparent, rgba(8,8,8,0.8))",
+          }}
         />
       </div>
 
@@ -430,11 +557,11 @@ export default function RecordClient() {
         <div className="relative flex items-center justify-center">
           <button
             onClick={() => setShowStopModal(true)}
-            disabled={status === 'idle'}
+            disabled={status === "idle"}
             className="w-16 h-16 rounded-full flex items-center justify-center active:scale-95 transition-transform disabled:opacity-30"
             style={{
-              background: 'rgba(239,68,68,0.15)',
-              border: '1.5px solid rgba(239,68,68,0.4)',
+              background: "rgba(239,68,68,0.15)",
+              border: "1.5px solid rgba(239,68,68,0.4)",
             }}
           >
             <div className="w-6 h-6 rounded-md bg-red-500" />
@@ -443,20 +570,22 @@ export default function RecordClient() {
 
         <button
           onClick={handlePauseResume}
-          disabled={status === 'idle'}
+          disabled={status === "idle"}
           className="w-20 h-20 rounded-full flex items-center justify-center active:scale-95 transition-all disabled:opacity-30"
           style={{
             background:
-              status === 'running'
-                ? 'linear-gradient(135deg, #830200, #E05300)'
-                : 'linear-gradient(135deg, #16A34A, #22C55E)',
+              status === "running"
+                ? "linear-gradient(135deg, #830200, #E05300)"
+                : "linear-gradient(135deg, #16A34A, #22C55E)",
             boxShadow:
-              status === 'running'
-                ? '0 8px 28px rgba(224,83,0,0.5)'
-                : status === 'idle' ? 'none' : '0 8px 28px rgba(34,197,94,0.5)',
+              status === "running"
+                ? "0 8px 28px rgba(224,83,0,0.5)"
+                : status === "idle"
+                ? "none"
+                : "0 8px 28px rgba(34,197,94,0.5)",
           }}
         >
-          {status === 'running' ? (
+          {status === "running" ? (
             <svg width="28" height="28" viewBox="0 0 24 24" fill="white">
               <rect x="6" y="4" width="4" height="16" rx="1" />
               <rect x="14" y="4" width="4" height="16" rx="1" />
@@ -470,10 +599,14 @@ export default function RecordClient() {
 
         <div className="w-16 h-16 flex items-center justify-center">
           <p className="text-white/20 text-[9px] text-center font-bold uppercase tracking-wider leading-tight">
-            Clique<br />para<br />parar
+            Clique
+            <br />
+            para
+            <br />
+            parar
           </p>
         </div>
       </div>
     </div>
-  )
+  );
 }

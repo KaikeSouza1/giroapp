@@ -1,2 +1,4 @@
-export function generateStaticParams() { return [] }
-export { default } from './RecordClient'
+export function generateStaticParams() {
+  return [];
+}
+export { default } from "./RecordClient";

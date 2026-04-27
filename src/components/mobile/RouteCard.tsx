@@ -1,53 +1,46 @@
-'use client'
+"use client";
 
-
-
-
-
-
-
-
-import Link from 'next/link'
+import Link from "next/link";
 
 type RouteCardProps = {
-  id: string
-  name: string
-  description: string | null
-  difficulty: string
-  type: string
-  distanceKm: string | null
-  estimatedMinutes: number | null
-  coverImageUrl: string | null
-  organizationName: string | null
-}
+  id: string;
+  name: string;
+  description: string | null;
+  difficulty: string;
+  type: string;
+  distanceKm: string | null;
+  estimatedMinutes: number | null;
+  coverImageUrl: string | null;
+  organizationName: string | null;
+};
 
 const difficultyLabel: Record<string, string> = {
-  easy: 'Fácil',
-  medium: 'Médio',
-  hard: 'Difícil',
-  extreme: 'Extremo',
-}
+  easy: "Fácil",
+  medium: "Médio",
+  hard: "Difícil",
+  extreme: "Extremo",
+};
 
 const difficultyColor: Record<string, string> = {
-  easy: '#22c55e',
-  medium: '#f59e0b',
-  hard: '#ef4444',
-  extreme: '#7c3aed',
-}
+  easy: "#22c55e",
+  medium: "#f59e0b",
+  hard: "#ef4444",
+  extreme: "#7c3aed",
+};
 
 const typeEmoji: Record<string, string> = {
-  caminhada: '🥾',
-  cicloturismo: '🚴',
-  '4x4': '🚙',
-  moto: '🏍️',
-  outros: '🗺️',
-}
+  caminhada: "🥾",
+  cicloturismo: "🚴",
+  "4x4": "🚙",
+  moto: "🏍️",
+  outros: "🗺️",
+};
 
 function formatDuration(minutes: number) {
-  if (minutes < 60) return `${minutes}min`
-  const h = Math.floor(minutes / 60)
-  const m = minutes % 60
-  return m > 0 ? `${h}h${m}min` : `${h}h`
+  if (minutes < 60) return `${minutes}min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}h${m}min` : `${h}h`;
 }
 
 export default function RouteCard({
@@ -61,33 +54,43 @@ export default function RouteCard({
   coverImageUrl,
   organizationName,
 }: RouteCardProps) {
-  const color = difficultyColor[difficulty] ?? '#f59e0b'
+  const color = difficultyColor[difficulty] ?? "#f59e0b";
 
   return (
     <Link href={`/routes/${id}`} className="block">
       <div
         className="bg-white rounded-3xl overflow-hidden transition-all active:scale-[0.98]"
-        style={{ border: '1.5px solid #F0F0F0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}
+        style={{
+          border: "1.5px solid #F0F0F0",
+          boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
+        }}
       >
         {}
-        <div className="relative w-full overflow-hidden" style={{ height: '180px' }}>
+        <div
+          className="relative w-full overflow-hidden"
+          style={{ height: "180px" }}
+        >
           {coverImageUrl ? (
             <img
               src={coverImageUrl}
               alt={name}
               className="w-full h-full object-cover"
-              style={{ display: 'block' }}
+              style={{ display: "block" }}
             />
           ) : (
-            
             <div
               className="w-full h-full flex flex-col items-center justify-center gap-2"
               style={{
-                background: 'linear-gradient(135deg, #FFF0EB 0%, #FFD9C0 100%)',
+                background: "linear-gradient(135deg, #FFF0EB 0%, #FFD9C0 100%)",
               }}
             >
-              <span style={{ fontSize: '2.5rem' }}>{typeEmoji[type] ?? '🗺️'}</span>
-              <span className="text-xs font-bold" style={{ color: '#E05300', opacity: 0.5 }}>
+              <span style={{ fontSize: "2.5rem" }}>
+                {typeEmoji[type] ?? "🗺️"}
+              </span>
+              <span
+                className="text-xs font-bold"
+                style={{ color: "#E05300", opacity: 0.5 }}
+              >
                 Sem foto de capa
               </span>
             </div>
@@ -99,7 +102,7 @@ export default function RouteCard({
               className="absolute inset-0"
               style={{
                 background:
-                  'linear-gradient(to top, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.15) 45%, transparent 100%)',
+                  "linear-gradient(to top, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.15) 45%, transparent 100%)",
               }}
             />
           )}
@@ -108,9 +111,9 @@ export default function RouteCard({
           <div
             className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-black"
             style={{
-              background: 'rgba(255,255,255,0.92)',
+              background: "rgba(255,255,255,0.92)",
               color: color,
-              backdropFilter: 'blur(6px)',
+              backdropFilter: "blur(6px)",
               border: `1.5px solid ${color}30`,
             }}
           >
@@ -126,9 +129,9 @@ export default function RouteCard({
             <div
               className="absolute top-3 right-3 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider"
               style={{
-                background: 'rgba(224,83,0,0.88)',
-                color: 'white',
-                backdropFilter: 'blur(6px)',
+                background: "rgba(224,83,0,0.88)",
+                color: "white",
+                backdropFilter: "blur(6px)",
               }}
             >
               {organizationName}
@@ -140,7 +143,7 @@ export default function RouteCard({
             <div className="absolute bottom-3 left-4 right-4">
               <p
                 className="text-[10px] font-bold uppercase tracking-widest mb-0.5"
-                style={{ color: 'rgba(255,255,255,0.65)' }}
+                style={{ color: "rgba(255,255,255,0.65)" }}
               >
                 {typeEmoji[type]} {type}
               </p>
@@ -189,7 +192,9 @@ export default function RouteCard({
                   <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
                   <circle cx="12" cy="10" r="3" />
                 </svg>
-                <span className="text-xs font-bold text-gray-500">{distanceKm} km</span>
+                <span className="text-xs font-bold text-gray-500">
+                  {distanceKm} km
+                </span>
               </div>
             )}
 
@@ -217,7 +222,7 @@ export default function RouteCard({
               <div
                 className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-black text-white"
                 style={{
-                  background: 'linear-gradient(135deg, #830200, #E05300)',
+                  background: "linear-gradient(135deg, #830200, #E05300)",
                 }}
               >
                 Iniciar
@@ -237,5 +242,5 @@ export default function RouteCard({
         </div>
       </div>
     </Link>
-  )
+  );
 }

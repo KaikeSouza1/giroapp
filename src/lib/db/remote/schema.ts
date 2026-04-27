@@ -1,223 +1,287 @@
-import { pgTable, uuid, text, varchar, timestamp, 
-         boolean, numeric, integer, pgEnum, jsonb } from 'drizzle-orm/pg-core'
-import { relations } from 'drizzle-orm'
+import {
+  pgTable,
+  uuid,
+  text,
+  varchar,
+  timestamp,
+  boolean,
+  numeric,
+  integer,
+  pgEnum,
+  jsonb,
+} from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
 
+export const routeStatusEnum = pgEnum("route_status", [
+  "rascunho",
+  "publicado",
+  "arquivado",
+]);
+export const checkinStatusEnum = pgEnum("checkin_status", [
+  "pendente",
+  "aprovado",
+  "rejeitado",
+]);
+export const difficultyEnum = pgEnum("difficulty", [
+  "facil",
+  "medio",
+  "dificil",
+  "extremo",
+]);
+export const userRoleEnum = pgEnum("user_role", [
+  "superadmin",
+  "admin_org",
+  "usuario",
+]);
+export const routeTypeEnum = pgEnum("route_type", [
+  "caminhada",
+  "corrida",
+  "cicloturismo",
+  "4x4",
+  "moto",
+  "outros",
+]);
+export const sessionStatusEnum = pgEnum("session_status", [
+  "em_andamento",
+  "pausado",
+  "concluido",
+  "cancelado",
+]);
+export const notificationTypeEnum = pgEnum("notification_type", ["follow"]);
 
+export const organizations = pgTable("organizations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 150 }).notNull(),
+  slug: varchar("slug", { length: 150 }).notNull().unique(),
+  logoUrl: text("logo_url"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
 
-export const routeStatusEnum = pgEnum('route_status', ['rascunho', 'publicado', 'arquivado'])
-export const checkinStatusEnum = pgEnum('checkin_status', ['pendente', 'aprovado', 'rejeitado'])
-export const difficultyEnum = pgEnum('difficulty', ['facil', 'medio', 'dificil', 'extremo'])
-export const userRoleEnum = pgEnum('user_role', ['superadmin', 'admin_org', 'usuario'])
-export const routeTypeEnum = pgEnum('route_type', ['caminhada', 'corrida', 'cicloturismo', '4x4', 'moto', 'outros'])
-export const sessionStatusEnum = pgEnum('session_status', ['em_andamento', 'pausado', 'concluido', 'cancelado'])
-export const notificationTypeEnum = pgEnum('notification_type', ['follow']) 
+export const users = pgTable("users", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  supabaseAuthId: uuid("supabase_auth_id").notNull().unique(),
+  username: varchar("username", { length: 50 }).notNull().unique(),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  displayName: varchar("display_name", { length: 100 }).notNull(),
+  bio: text("bio"),
+  avatarUrl: text("avatar_url"),
 
+  referenceSelfiePath: text("reference_selfie_path"),
+  isSelfieCaptured: boolean("is_selfie_captured").default(false),
 
+  isEmailVerified: boolean("is_email_verified").default(false),
+  isActive: boolean("is_active").default(true),
+  isAdmin: boolean("is_admin").default(false),
 
-export const organizations = pgTable('organizations', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  name: varchar('name', { length: 150 }).notNull(),
-  slug: varchar('slug', { length: 150 }).notNull().unique(),
-  logoUrl: text('logo_url'),
-  isActive: boolean('is_active').default(true),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-})
+  role: userRoleEnum("role").default("usuario").notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, {
+    onDelete: "set null",
+  }),
 
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
 
+export const followers = pgTable("followers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  followerId: uuid("follower_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  followingId: uuid("following_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
-export const users = pgTable('users', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  supabaseAuthId: uuid('supabase_auth_id').notNull().unique(),
-  username: varchar('username', { length: 50 }).notNull().unique(),
-  email: varchar('email', { length: 255 }).notNull().unique(),
-  displayName: varchar('display_name', { length: 100 }).notNull(),
-  bio: text('bio'),
-  avatarUrl: text('avatar_url'),
+export const notifications = pgTable("notifications", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  actorId: uuid("actor_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  type: notificationTypeEnum("type").default("follow").notNull(),
+  isRead: boolean("is_read").default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
-  referenceSelfiePath: text('reference_selfie_path'),
-  isSelfieCaptured: boolean('is_selfie_captured').default(false),
+export const routes = pgTable("routes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 150 }).notNull(),
+  slug: varchar("slug", { length: 200 }).notNull().unique(),
+  description: text("description"),
+  coverImageUrl: text("cover_image_url"),
+  difficulty: difficultyEnum("difficulty").default("medio"),
+  status: routeStatusEnum("status").default("rascunho"),
+  distanceKm: numeric("distance_km", { precision: 8, scale: 2 }),
+  estimatedMinutes: integer("estimated_minutes"),
 
-  isEmailVerified: boolean('is_email_verified').default(false),
-  isActive: boolean('is_active').default(true),
-  isAdmin: boolean('is_admin').default(false),
+  startLatitude: numeric("start_latitude", { precision: 10, scale: 7 }),
+  startLongitude: numeric("start_longitude", { precision: 10, scale: 7 }),
 
-  role: userRoleEnum('role').default('usuario').notNull(),
-  organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'set null' }),
+  createdByAdminId: uuid("created_by_admin_id").references(() => users.id),
+  organizationId: uuid("organization_id").references(() => organizations.id, {
+    onDelete: "cascade",
+  }),
+  type: routeTypeEnum("type").default("caminhada").notNull(),
 
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-})
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
 
+export const waypoints = pgTable("waypoints", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  routeId: uuid("route_id")
+    .notNull()
+    .references(() => routes.id, { onDelete: "cascade" }),
+  order: integer("order").notNull(),
+  name: varchar("name", { length: 100 }).notNull(),
+  description: text("description"),
+  latitude: numeric("latitude", { precision: 10, scale: 7 }).notNull(),
+  longitude: numeric("longitude", { precision: 10, scale: 7 }).notNull(),
+  radiusMeters: integer("radius_meters").default(50),
+  requiresSelfie: boolean("requires_selfie").default(true),
+  photoUrl: text("photo_url"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
+export const checkins = pgTable("checkins", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  localId: uuid("local_id").notNull().unique(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
+  waypointId: uuid("waypoint_id")
+    .notNull()
+    .references(() => waypoints.id),
+  routeSessionId: uuid("route_session_id").notNull(),
 
-export const followers = pgTable('followers', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  followerId: uuid('follower_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  followingId: uuid('following_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-})
+  capturedLatitude: numeric("captured_latitude", {
+    precision: 10,
+    scale: 7,
+  }).notNull(),
+  capturedLongitude: numeric("captured_longitude", {
+    precision: 10,
+    scale: 7,
+  }).notNull(),
+  distanceFromWaypointMeters: numeric("distance_from_waypoint_meters", {
+    precision: 8,
+    scale: 2,
+  }),
 
+  selfieImagePath: text("selfie_image_path").notNull(),
+  biometricScore: numeric("biometric_score", { precision: 5, scale: 4 }),
+  biometricStatus: checkinStatusEnum("biometric_status").default("pendente"),
+  biometricValidatedAt: timestamp("biometric_validated_at"),
 
+  capturedAtOffline: timestamp("captured_at_offline").notNull(),
+  syncedAt: timestamp("synced_at").defaultNow(),
 
-export const notifications = pgTable('notifications', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }), 
-  actorId: uuid('actor_id').notNull().references(() => users.id, { onDelete: 'cascade' }), 
-  type: notificationTypeEnum('type').default('follow').notNull(),
-  isRead: boolean('is_read').default(false),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-})
+  metadata: jsonb("metadata"),
+});
 
+export const routeSessions = pgTable("route_sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  localId: uuid("local_id").notNull().unique(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
 
+  routeId: uuid("route_id").references(() => routes.id),
+  activityType: routeTypeEnum("activity_type").default("caminhada"),
+  status: sessionStatusEnum("status").default("em_andamento"),
 
-export const routes = pgTable('routes', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  name: varchar('name', { length: 150 }).notNull(),
-  slug: varchar('slug', { length: 200 }).notNull().unique(),
-  description: text('description'),
-  coverImageUrl: text('cover_image_url'),
-  difficulty: difficultyEnum('difficulty').default('medio'),
-  status: routeStatusEnum('status').default('rascunho'),
-  distanceKm: numeric('distance_km', { precision: 8, scale: 2 }),
-  estimatedMinutes: integer('estimated_minutes'),
+  isPublic: boolean("is_public").default(true).notNull(),
 
-  startLatitude: numeric('start_latitude', { precision: 10, scale: 7 }),
-  startLongitude: numeric('start_longitude', { precision: 10, scale: 7 }),
+  startedAt: timestamp("started_at").notNull(),
+  completedAt: timestamp("completed_at"),
 
-  createdByAdminId: uuid('created_by_admin_id').references(() => users.id),
-  organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'cascade' }),
-  type: routeTypeEnum('type').default('caminhada').notNull(),
+  totalDistanceKm: numeric("total_distance_km", { precision: 8, scale: 2 }),
+  durationSeconds: integer("duration_seconds"),
+  averagePace: varchar("average_pace", { length: 15 }),
 
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-})
+  pathCoordinates: jsonb("path_coordinates"),
+  socialImageUrl: text("social_image_url"),
+});
 
+export const sessionLikes = pgTable("session_likes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sessionId: uuid("session_id")
+    .notNull()
+    .references(() => routeSessions.id, { onDelete: "cascade" }),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
+export const sessionComments = pgTable("session_comments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sessionId: uuid("session_id")
+    .notNull()
+    .references(() => routeSessions.id, { onDelete: "cascade" }),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
-export const waypoints = pgTable('waypoints', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  routeId: uuid('route_id').notNull().references(() => routes.id, { onDelete: 'cascade' }),
-  order: integer('order').notNull(),
-  name: varchar('name', { length: 100 }).notNull(),
-  description: text('description'),
-  latitude: numeric('latitude', { precision: 10, scale: 7 }).notNull(),
-  longitude: numeric('longitude', { precision: 10, scale: 7 }).notNull(),
-  radiusMeters: integer('radius_meters').default(50),
-  requiresSelfie: boolean('requires_selfie').default(true),
-  photoUrl: text('photo_url'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-})
+export const badges = pgTable("badges", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  routeId: uuid("route_id").references(() => routes.id, {
+    onDelete: "set null",
+  }),
+  name: varchar("name", { length: 100 }).notNull(),
+  description: text("description"),
+  imageUrl: text("image_url").notNull(),
+  type: varchar("type", { length: 30 }).default("conclusao_rota"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
-
-
-export const checkins = pgTable('checkins', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  localId: uuid('local_id').notNull().unique(),   
-  userId: uuid('user_id').notNull().references(() => users.id),
-  waypointId: uuid('waypoint_id').notNull().references(() => waypoints.id),
-  routeSessionId: uuid('route_session_id').notNull(), 
-
-  capturedLatitude: numeric('captured_latitude', { precision: 10, scale: 7 }).notNull(),
-  capturedLongitude: numeric('captured_longitude', { precision: 10, scale: 7 }).notNull(),
-  distanceFromWaypointMeters: numeric('distance_from_waypoint_meters', { precision: 8, scale: 2 }),
-
-  selfieImagePath: text('selfie_image_path').notNull(),
-  biometricScore: numeric('biometric_score', { precision: 5, scale: 4 }), 
-  biometricStatus: checkinStatusEnum('biometric_status').default('pendente'),
-  biometricValidatedAt: timestamp('biometric_validated_at'),
-
-  capturedAtOffline: timestamp('captured_at_offline').notNull(),  
-  syncedAt: timestamp('synced_at').defaultNow(),                  
-
-  metadata: jsonb('metadata'),   
-})
-
-
-
-export const routeSessions = pgTable('route_sessions', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  localId: uuid('local_id').notNull().unique(),
-  userId: uuid('user_id').notNull().references(() => users.id),
-  
-  routeId: uuid('route_id').references(() => routes.id), 
-  activityType: routeTypeEnum('activity_type').default('caminhada'),
-  status: sessionStatusEnum('status').default('em_andamento'),
-  
-  isPublic: boolean('is_public').default(true).notNull(), 
-  
-  startedAt: timestamp('started_at').notNull(),
-  completedAt: timestamp('completed_at'),
-  
-  totalDistanceKm: numeric('total_distance_km', { precision: 8, scale: 2 }),
-  durationSeconds: integer('duration_seconds'),
-  averagePace: varchar('average_pace', { length: 15 }),
-  
-  pathCoordinates: jsonb('path_coordinates'), 
-  socialImageUrl: text('social_image_url'),
-})
-
-
-
-export const sessionLikes = pgTable('session_likes', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  sessionId: uuid('session_id').notNull().references(() => routeSessions.id, { onDelete: 'cascade' }),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-})
-
-export const sessionComments = pgTable('session_comments', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  sessionId: uuid('session_id').notNull().references(() => routeSessions.id, { onDelete: 'cascade' }),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  content: text('content').notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-})
-
-
-
-export const badges = pgTable('badges', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  routeId: uuid('route_id').references(() => routes.id, { onDelete: 'set null' }),
-  name: varchar('name', { length: 100 }).notNull(),
-  description: text('description'),
-  imageUrl: text('image_url').notNull(),
-  type: varchar('type', { length: 30 }).default('conclusao_rota'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-})
-
-export const userBadges = pgTable('user_badges', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id').notNull().references(() => users.id),
-  badgeId: uuid('badge_id').notNull().references(() => badges.id),
-  routeSessionId: uuid('route_session_id').references(() => routeSessions.id),
-  awardedAt: timestamp('awarded_at').defaultNow().notNull(),
-})
-
-
+export const userBadges = pgTable("user_badges", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
+  badgeId: uuid("badge_id")
+    .notNull()
+    .references(() => badges.id),
+  routeSessionId: uuid("route_session_id").references(() => routeSessions.id),
+  awardedAt: timestamp("awarded_at").defaultNow().notNull(),
+});
 
 export const organizationsRelations = relations(organizations, ({ many }) => ({
   users: many(users),
   routes: many(routes),
-}))
+}));
 
 export const usersRelations = relations(users, ({ one, many }) => ({
-  organization: one(organizations, { fields: [users.organizationId], references: [organizations.id] }),
+  organization: one(organizations, {
+    fields: [users.organizationId],
+    references: [organizations.id],
+  }),
   checkins: many(checkins),
   routeSessions: many(routeSessions),
   userBadges: many(userBadges),
-  followers: many(followers, { relationName: 'following' }),
-  following: many(followers, { relationName: 'followers' }),
-}))
+  followers: many(followers, { relationName: "following" }),
+  following: many(followers, { relationName: "followers" }),
+}));
 
 export const routesRelations = relations(routes, ({ many, one }) => ({
-  organization: one(organizations, { fields: [routes.organizationId], references: [organizations.id] }),
+  organization: one(organizations, {
+    fields: [routes.organizationId],
+    references: [organizations.id],
+  }),
   waypoints: many(waypoints),
   sessions: many(routeSessions),
   badge: one(badges, { fields: [routes.id], references: [badges.routeId] }),
-}))
+}));
 
 export const waypointsRelations = relations(waypoints, ({ one, many }) => ({
   route: one(routes, { fields: [waypoints.routeId], references: [routes.id] }),
   checkins: many(checkins),
-}))
+}));

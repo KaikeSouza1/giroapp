@@ -1,104 +1,125 @@
-'use client'
+"use client";
 
-import { useEffect, useState } from 'react'
-import Link from 'next/link'
-import Sidebar from '@/components/admin/Sidebar'
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import Sidebar from "@/components/admin/Sidebar";
 
 type Route = {
-  id: string
-  name: string
-  difficulty: string
-  status: string
-  type: string
-  distanceKm: string | null
-  createdAt: string
-  organizationName: string | null
-}
+  id: string;
+  name: string;
+  difficulty: string;
+  status: string;
+  type: string;
+  distanceKm: string | null;
+  createdAt: string;
+  organizationName: string | null;
+};
 
 const difficultyLabel: Record<string, string> = {
-  easy: 'Fácil', medium: 'Médio', hard: 'Difícil', extreme: 'Extremo',
-  facil: 'Fácil', medio: 'Médio', dificil: 'Difícil', extremo: 'Extremo'
-}
+  easy: "Fácil",
+  medium: "Médio",
+  hard: "Difícil",
+  extreme: "Extremo",
+  facil: "Fácil",
+  medio: "Médio",
+  dificil: "Difícil",
+  extremo: "Extremo",
+};
 
 const difficultyColor: Record<string, string> = {
-  easy: '#22c55e', medium: '#f59e0b', hard: '#ef4444', extreme: '#7c3aed',
-  facil: '#22c55e', medio: '#f59e0b', dificil: '#ef4444', extremo: '#7c3aed'
-}
-
+  easy: "#22c55e",
+  medium: "#f59e0b",
+  hard: "#ef4444",
+  extreme: "#7c3aed",
+  facil: "#22c55e",
+  medio: "#f59e0b",
+  dificil: "#ef4444",
+  extremo: "#7c3aed",
+};
 
 const statusLabel: Record<string, string> = {
-  draft: 'Rascunho', rascunho: 'Rascunho', 
-  published: 'Publicada', publicado: 'Publicada', 
-  archived: 'Arquivada', arquivado: 'Arquivada'
-}
+  draft: "Rascunho",
+  rascunho: "Rascunho",
+  published: "Publicada",
+  publicado: "Publicada",
+  archived: "Arquivada",
+  arquivado: "Arquivada",
+};
 
 const statusColor: Record<string, { bg: string; text: string }> = {
-  draft: { bg: '#F3F4F6', text: '#6B7280' },
-  rascunho: { bg: '#F3F4F6', text: '#6B7280' },
-  published: { bg: '#DCFCE7', text: '#16A34A' },
-  publicado: { bg: '#DCFCE7', text: '#16A34A' },
-  archived: { bg: '#FEF9C3', text: '#CA8A04' },
-  arquivado: { bg: '#FEF9C3', text: '#CA8A04' },
-}
+  draft: { bg: "#F3F4F6", text: "#6B7280" },
+  rascunho: { bg: "#F3F4F6", text: "#6B7280" },
+  published: { bg: "#DCFCE7", text: "#16A34A" },
+  publicado: { bg: "#DCFCE7", text: "#16A34A" },
+  archived: { bg: "#FEF9C3", text: "#CA8A04" },
+  arquivado: { bg: "#FEF9C3", text: "#CA8A04" },
+};
 
 export default function RoutesPage() {
-  const [routes, setRoutes] = useState<Route[]>([])
-  const [loading, setLoading] = useState(true)
-  const [userRole, setUserRole] = useState<string>('')
+  const [routes, setRoutes] = useState<Route[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [userRole, setUserRole] = useState<string>("");
 
   useEffect(() => {
-    fetch('/api/users/me').then(r => r.json()).then(data => setUserRole(data?.role || ''))
+    fetch("/api/users/me")
+      .then((r) => r.json())
+      .then((data) => setUserRole(data?.role || ""));
 
-    fetch('/api/admin/routes')
+    fetch("/api/admin/routes")
       .then(async (r) => {
-        const data = await r.json()
+        const data = await r.json();
         if (!r.ok || !Array.isArray(data)) {
-          console.error("Erro vindo da API de rotas:", data)
-          setRoutes([]) 
-          return
+          console.error("Erro vindo da API de rotas:", data);
+          setRoutes([]);
+          return;
         }
-        setRoutes(data)
+        setRoutes(data);
       })
       .catch((err) => {
-        console.error("Erro na requisição:", err)
-        setRoutes([])
+        console.error("Erro na requisição:", err);
+        setRoutes([]);
       })
       .finally(() => {
-        setLoading(false)
-      })
-  }, [])
+        setLoading(false);
+      });
+  }, []);
 
-  
   async function updateStatus(id: string, status: string) {
     try {
       const res = await fetch(`/api/admin/routes/${id}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
-      })
+      });
       if (res.ok) {
-        setRoutes(prev => prev.map(r => r.id === id ? { ...r, status } : r))
+        setRoutes((prev) =>
+          prev.map((r) => (r.id === id ? { ...r, status } : r))
+        );
       }
     } catch (error) {
-      alert("Erro ao tentar atualizar o status da rota.")
+      alert("Erro ao tentar atualizar o status da rota.");
     }
   }
 
-  
   async function handleDelete(id: string) {
-    const confirmDelete = window.confirm("Tem certeza que deseja excluir esta rota permanentemente? Isso só funcionará se ninguém tiver percorrido ela ainda. Caso contrário, apenas a arquive.")
-    if (!confirmDelete) return
+    const confirmDelete = window.confirm(
+      "Tem certeza que deseja excluir esta rota permanentemente? Isso só funcionará se ninguém tiver percorrido ela ainda. Caso contrário, apenas a arquive."
+    );
+    if (!confirmDelete) return;
 
     try {
-      const res = await fetch(`/api/admin/routes/${id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/admin/routes/${id}`, { method: "DELETE" });
       if (res.ok) {
-        setRoutes(prev => prev.filter(r => r.id !== id))
+        setRoutes((prev) => prev.filter((r) => r.id !== id));
       } else {
-        const data = await res.json()
-        alert(data.error || 'Erro ao tentar excluir a rota. Considere usar a opção "Arquivar".')
+        const data = await res.json();
+        alert(
+          data.error ||
+            'Erro ao tentar excluir a rota. Considere usar a opção "Arquivar".'
+        );
       }
     } catch (e) {
-      alert('Erro de conexão ao excluir.')
+      alert("Erro de conexão ao excluir.");
     }
   }
 
@@ -110,15 +131,28 @@ export default function RoutesPage() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-black text-gray-900">Rotas</h1>
-            <p className="text-gray-400 text-sm mt-0.5">Gerencie as trilhas {userRole === 'superadmin' ? 'de todas as organizações' : 'da sua organização'}</p>
+            <p className="text-gray-400 text-sm mt-0.5">
+              Gerencie as trilhas{" "}
+              {userRole === "superadmin"
+                ? "de todas as organizações"
+                : "da sua organização"}
+            </p>
           </div>
           <Link
             href="/dashboard/routes/new"
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-bold transition-all active:scale-[0.98]"
-            style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}
+            style={{ background: "linear-gradient(135deg, #830200, #E05300)" }}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+            >
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
             Nova rota
           </Link>
@@ -132,10 +166,14 @@ export default function RoutesPage() {
           ) : routes.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <div className="text-5xl">🗺️</div>
-              <p className="text-gray-500 font-semibold">Nenhuma rota cadastrada ainda</p>
-              <Link href="/dashboard/routes/new"
+              <p className="text-gray-500 font-semibold">
+                Nenhuma rota cadastrada ainda
+              </p>
+              <Link
+                href="/dashboard/routes/new"
                 className="text-sm font-bold"
-                style={{ color: '#E05300' }}>
+                style={{ color: "#E05300" }}
+              >
                 Criar primeira rota →
               </Link>
             </div>
@@ -143,68 +181,99 @@ export default function RoutesPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/50">
-                  <th className="text-left px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Nome & Tipo</th>
-                  {userRole === 'superadmin' && <th className="text-left px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Organização</th>}
-                  <th className="text-left px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Dificuldade</th>
-                  <th className="text-left px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Distância</th>
-                  <th className="text-left px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Status</th>
-                  <th className="text-right px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Ações</th>
+                  <th className="text-left px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                    Nome & Tipo
+                  </th>
+                  {userRole === "superadmin" && (
+                    <th className="text-left px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                      Organização
+                    </th>
+                  )}
+                  <th className="text-left px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                    Dificuldade
+                  </th>
+                  <th className="text-left px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                    Distância
+                  </th>
+                  <th className="text-left px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="text-right px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                    Ações
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {routes.map((route, i) => (
-                  <tr key={route.id}
+                  <tr
+                    key={route.id}
                     className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors"
-                    style={{ animationDelay: `${i * 50}ms` }}>
+                    style={{ animationDelay: `${i * 50}ms` }}
+                  >
                     <td className="px-6 py-4">
-                      <p className="font-semibold text-gray-900 text-sm">{route.name}</p>
-                      <p className="text-xs text-gray-400 mt-0.5 capitalize">{route.type}</p>
+                      <p className="font-semibold text-gray-900 text-sm">
+                        {route.name}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5 capitalize">
+                        {route.type}
+                      </p>
                     </td>
-                    {userRole === 'superadmin' && (
+                    {userRole === "superadmin" && (
                       <td className="px-6 py-4 text-sm text-gray-600">
-                        {route.organizationName || '—'}
+                        {route.organizationName || "—"}
                       </td>
                     )}
                     <td className="px-6 py-4">
-                      <span className="text-xs font-bold px-2.5 py-1 rounded-full"
+                      <span
+                        className="text-xs font-bold px-2.5 py-1 rounded-full"
                         style={{
-                          background: `${difficultyColor[route.difficulty] || '#e5e7eb'}20`,
-                          color: difficultyColor[route.difficulty] || '#6b7280'
-                        }}>
+                          background: `${
+                            difficultyColor[route.difficulty] || "#e5e7eb"
+                          }20`,
+                          color: difficultyColor[route.difficulty] || "#6b7280",
+                        }}
+                      >
                         {difficultyLabel[route.difficulty] ?? route.difficulty}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500">
-                      {route.distanceKm ? `${route.distanceKm} km` : '—'}
+                      {route.distanceKm ? `${route.distanceKm} km` : "—"}
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-xs font-bold px-2.5 py-1 rounded-full"
-                        style={{ 
-                          backgroundColor: (statusColor[route.status] || { bg: '#F3F4F6' }).bg, 
-                          color: (statusColor[route.status] || { text: '#6B7280' }).text 
-                        }}>
+                      <span
+                        className="text-xs font-bold px-2.5 py-1 rounded-full"
+                        style={{
+                          backgroundColor: (
+                            statusColor[route.status] || { bg: "#F3F4F6" }
+                          ).bg,
+                          color: (
+                            statusColor[route.status] || { text: "#6B7280" }
+                          ).text,
+                        }}
+                      >
                         {statusLabel[route.status] ?? route.status}
                       </span>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-2">
-                        
                         {}
-                        {route.status !== 'published' && (
+                        {route.status !== "published" && (
                           <button
-                            onClick={() => updateStatus(route.id, 'published')}
+                            onClick={() => updateStatus(route.id, "published")}
                             className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all hover:opacity-80"
-                            style={{ background: '#DCFCE7', color: '#16A34A' }}>
+                            style={{ background: "#DCFCE7", color: "#16A34A" }}
+                          >
                             Publicar
                           </button>
                         )}
 
                         {}
-                        {route.status === 'published' && (
+                        {route.status === "published" && (
                           <button
-                            onClick={() => updateStatus(route.id, 'archived')}
+                            onClick={() => updateStatus(route.id, "archived")}
                             className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all hover:opacity-80"
-                            style={{ background: '#FEF9C3', color: '#CA8A04' }}>
+                            style={{ background: "#FEF9C3", color: "#CA8A04" }}
+                          >
                             Arquivar
                           </button>
                         )}
@@ -212,7 +281,8 @@ export default function RoutesPage() {
                         <Link
                           href={`/dashboard/routes/${route.id}/edit`}
                           className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all hover:opacity-80"
-                          style={{ background: '#F3F4F6', color: '#6B7280' }}>
+                          style={{ background: "#F3F4F6", color: "#6B7280" }}
+                        >
                           Editar
                         </Link>
 
@@ -220,7 +290,8 @@ export default function RoutesPage() {
                         <button
                           onClick={() => handleDelete(route.id)}
                           className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all border border-transparent hover:border-red-200"
-                          style={{ background: '#FEF2F2', color: '#DC2626' }}>
+                          style={{ background: "#FEF2F2", color: "#DC2626" }}
+                        >
                           Excluir
                         </button>
                       </div>
@@ -233,5 +304,5 @@ export default function RoutesPage() {
         </div>
       </main>
     </div>
-  )
+  );
 }

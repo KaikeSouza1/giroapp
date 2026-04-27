@@ -1,61 +1,69 @@
-
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/client'
-import { db } from '@/lib/db/remote/client'
-import { sessionLikes, users } from '@/lib/db/remote/schema'
-import { eq, and, count } from 'drizzle-orm'
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/client";
+import { db } from "@/lib/db/remote/client";
+import { sessionLikes, users } from "@/lib/db/remote/schema";
+import { eq, and, count } from "drizzle-orm";
 
 export async function POST(
-  request: NextRequest, 
+  request: NextRequest,
   context: { params: Promise<{ sessionId: string }> }
 ) {
   try {
-    const resolvedParams = await context.params
-    const sessionId = resolvedParams.sessionId
-    
-    const token = request.headers.get('Authorization')?.replace('Bearer ', '')
-    if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const resolvedParams = await context.params;
+    const sessionId = resolvedParams.sessionId;
 
-    const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    
+    const token = request.headers.get("Authorization")?.replace("Bearer ", "");
+    if (!token)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser(token);
+
     if (authError || !user) {
-      console.error("Erro de autenticação no like:", authError)
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      console.error("Erro de autenticação no like:", authError);
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const [dbUser] = await db
       .select()
       .from(users)
       .where(eq(users.supabaseAuthId, user.id))
-      .limit(1)
+      .limit(1);
 
-    if (!dbUser) return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    if (!dbUser)
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
 
     const [existingLike] = await db
       .select()
       .from(sessionLikes)
-      .where(and(eq(sessionLikes.sessionId, sessionId), eq(sessionLikes.userId, dbUser.id)))
+      .where(
+        and(
+          eq(sessionLikes.sessionId, sessionId),
+          eq(sessionLikes.userId, dbUser.id)
+        )
+      );
 
-    let liked: boolean
+    let liked: boolean;
 
     if (existingLike) {
-      await db.delete(sessionLikes).where(eq(sessionLikes.id, existingLike.id))
-      liked = false
+      await db.delete(sessionLikes).where(eq(sessionLikes.id, existingLike.id));
+      liked = false;
     } else {
-      await db.insert(sessionLikes).values({ sessionId, userId: dbUser.id })
-      liked = true
+      await db.insert(sessionLikes).values({ sessionId, userId: dbUser.id });
+      liked = true;
     }
 
-    
     const [{ value: likesCount }] = await db
       .select({ value: count() })
       .from(sessionLikes)
-      .where(eq(sessionLikes.sessionId, sessionId))
+      .where(eq(sessionLikes.sessionId, sessionId));
 
-    return NextResponse.json({ liked, likesCount: Number(likesCount) })
+    return NextResponse.json({ liked, likesCount: Number(likesCount) });
   } catch (err: any) {
-    console.error("Erro na rota de like:", err)
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    console.error("Erro na rota de like:", err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

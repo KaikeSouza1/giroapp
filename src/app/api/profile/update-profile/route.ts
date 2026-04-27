@@ -1,19 +1,19 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db/remote/client'
-import { users } from '@/lib/db/remote/schema'
-import { eq } from 'drizzle-orm'
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/db/remote/client";
+import { users } from "@/lib/db/remote/schema";
+import { eq } from "drizzle-orm";
 
 export async function POST(request: NextRequest) {
   try {
-    const { supabaseAuthId, avatarUrl } = await request.json()
-    
-    
-    await db.update(users)
-      .set({ avatarUrl: avatarUrl })
-      .where(eq(users.supabaseAuthId, supabaseAuthId))
+    const { supabaseAuthId, avatarUrl } = await request.json();
 
-    return NextResponse.json({ success: true })
+    await db
+      .update(users)
+      .set({ avatarUrl: avatarUrl })
+      .where(eq(users.supabaseAuthId, supabaseAuthId));
+
+    return NextResponse.json({ success: true });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

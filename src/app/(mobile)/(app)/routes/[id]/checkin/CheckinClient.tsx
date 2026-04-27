@@ -1,256 +1,295 @@
-'use client'
+"use client";
 
-import { useEffect, useState, useRef, use, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
-import { createBrowserClient } from '@supabase/ssr'
-import { Camera, CameraResultType, CameraSource, CameraDirection } from '@capacitor/camera'
-import { Geolocation } from '@capacitor/geolocation'
+import { useEffect, useState, useRef, use, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { createBrowserClient } from "@supabase/ssr";
+import {
+  Camera,
+  CameraResultType,
+  CameraSource,
+  CameraDirection,
+} from "@capacitor/camera";
+import { Geolocation } from "@capacitor/geolocation";
 
 type Waypoint = {
-  id: string
-  name: string
-  description: string | null
-  latitude: string
-  longitude: string
-  order: number
-  radiusMeters: number
-  requiresSelfie: boolean
-}
+  id: string;
+  name: string;
+  description: string | null;
+  latitude: string;
+  longitude: string;
+  order: number;
+  radiusMeters: number;
+  requiresSelfie: boolean;
+};
 
 type RouteDetail = {
-  id: string
-  name: string
-  distanceKm: string | null
-  waypoints: Waypoint[]
-}
+  id: string;
+  name: string;
+  distanceKm: string | null;
+  waypoints: Waypoint[];
+};
 
 type UserPosition = {
-  lat: number
-  lng: number
-  accuracy: number
-}
+  lat: number;
+  lng: number;
+  accuracy: number;
+};
 
 type Phase =
-  | 'loading'
-  | 'ready'
-  | 'acquiring-gps'
-  | 'navigating'
-  | 'near-waypoint'
-  | 'camera-open'
-  | 'reviewing'
-  | 'uploading'
-  | 'concluido'
-  | 'offline-completed'
-  | 'error'
+  | "loading"
+  | "ready"
+  | "acquiring-gps"
+  | "navigating"
+  | "near-waypoint"
+  | "camera-open"
+  | "reviewing"
+  | "uploading"
+  | "concluido"
+  | "offline-completed"
+  | "error";
 
 type CompletedCheckin = {
-  waypointId: string
-  photoUrl: string
-  lat: number
-  lng: number
-  distance: number
-}
+  waypointId: string;
+  photoUrl: string;
+  lat: number;
+  lng: number;
+  distance: number;
+};
 
-const MAX_ACCEPTABLE_ACCURACY = 60
-const MOVING_AVERAGE_WINDOW = 3
-const UI_UPDATE_INTERVAL_MS = 300
-const MAX_INTERPOLATION_SPEED_MS = 0.00306
+const MAX_ACCEPTABLE_ACCURACY = 60;
+const MOVING_AVERAGE_WINDOW = 3;
+const UI_UPDATE_INTERVAL_MS = 300;
+const MAX_INTERPOLATION_SPEED_MS = 0.00306;
 
-function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371000
-  const φ1 = (lat1 * Math.PI) / 180
-  const φ2 = (lat2 * Math.PI) / 180
-  const Δφ = ((lat2 - lat1) * Math.PI) / 180
-  const Δλ = ((lng2 - lng1) * Math.PI) / 180
-  const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+function haversineMeters(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+): number {
+  const R = 6371000;
+  const φ1 = (lat1 * Math.PI) / 180;
+  const φ2 = (lat2 * Math.PI) / 180;
+  const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+  const Δλ = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function formatDistance(meters: number): string {
-  if (meters < 1000) return `${Math.round(meters)}m`
-  return `${(meters / 1000).toFixed(1)}km`
+  if (meters < 1000) return `${Math.round(meters)}m`;
+  return `${(meters / 1000).toFixed(1)}km`;
 }
 
 function formatTime(seconds: number): string {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = seconds % 60
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0)
+    return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 function accuracyLabel(acc: number): { text: string; color: string } {
-  if (acc <= 15) return { text: 'Excelente', color: '#22c55e' }
-  if (acc <= 35) return { text: 'Boa', color: '#84cc16' }
-  if (acc <= 60) return { text: 'Regular', color: '#f59e0b' }
-  return { text: 'Fraca', color: '#ef4444' }
+  if (acc <= 15) return { text: "Excelente", color: "#22c55e" };
+  if (acc <= 35) return { text: "Boa", color: "#84cc16" };
+  if (acc <= 60) return { text: "Regular", color: "#f59e0b" };
+  return { text: "Fraca", color: "#ef4444" };
 }
 
-function weightedAveragePosition(
-  buffer: Array<{ lat: number; lng: number }>
-): { lat: number; lng: number } {
-  if (buffer.length === 0) return { lat: 0, lng: 0 }
-  if (buffer.length === 1) return buffer[0]
+function weightedAveragePosition(buffer: Array<{ lat: number; lng: number }>): {
+  lat: number;
+  lng: number;
+} {
+  if (buffer.length === 0) return { lat: 0, lng: 0 };
+  if (buffer.length === 1) return buffer[0];
 
-  let totalWeight = 0
-  let sumLat = 0
-  let sumLng = 0
+  let totalWeight = 0;
+  let sumLat = 0;
+  let sumLng = 0;
 
   buffer.forEach((coord, index) => {
-    const weight = index + 1
-    sumLat += coord.lat * weight
-    sumLng += coord.lng * weight
-    totalWeight += weight
-  })
+    const weight = index + 1;
+    sumLat += coord.lat * weight;
+    sumLng += coord.lng * weight;
+    totalWeight += weight;
+  });
 
   return {
     lat: sumLat / totalWeight,
     lng: sumLng / totalWeight,
-  }
+  };
 }
 
-export default function CheckinClient({ params }: { params: Promise<{ id: string }> }) {
-  const { id: routeId } = use(params)
-  const router = useRouter()
+export default function CheckinClient({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id: routeId } = use(params);
+  const router = useRouter();
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  );
 
-  const [phase, setPhase] = useState<Phase>('loading')
-  const [route, setRoute] = useState<RouteDetail | null>(null)
-  const [sessionId, setSessionId] = useState<string | null>(null)
-  const [currentWpIndex, setCurrentWpIndex] = useState(0)
-  const [userPosition, setUserPosition] = useState<UserPosition | null>(null)
-  const [elapsedSecs, setElapsedSecs] = useState(0)
-  const [completedCheckins, setCompletedCheckins] = useState<CompletedCheckin[]>([])
+  const [phase, setPhase] = useState<Phase>("loading");
+  const [route, setRoute] = useState<RouteDetail | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [currentWpIndex, setCurrentWpIndex] = useState(0);
+  const [userPosition, setUserPosition] = useState<UserPosition | null>(null);
+  const [elapsedSecs, setElapsedSecs] = useState(0);
+  const [completedCheckins, setCompletedCheckins] = useState<
+    CompletedCheckin[]
+  >([]);
 
-  const [trueDistanceToWp, setTrueDistanceToWp] = useState<number | null>(null)
-  const [displayedDistance, setDisplayedDistance] = useState<number | null>(null)
+  const [trueDistanceToWp, setTrueDistanceToWp] = useState<number | null>(null);
+  const [displayedDistance, setDisplayedDistance] = useState<number | null>(
+    null
+  );
 
-  const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null)
-  const [error, setError] = useState('')
-  const [isSyncingData, setIsSyncingData] = useState(false)
+  const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [isSyncingData, setIsSyncingData] = useState(false);
 
-  const gpsWatchIdRef = useRef<string | null>(null)
-  const timerRef = useRef<NodeJS.Timeout | null>(null)
-  const uiInterpolationRef = useRef<NodeJS.Timeout | null>(null)
+  const gpsWatchIdRef = useRef<string | null>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const uiInterpolationRef = useRef<NodeJS.Timeout | null>(null);
 
-  const gpsBufferRef = useRef<Array<{ lat: number; lng: number; accuracy: number }>>([])
-  const smoothedPositionRef = useRef<{ lat: number; lng: number } | null>(null)
-  const lastGpsUpdateRef = useRef<number>(0)
-  const currentWpRef = useRef<Waypoint | null>(null)
-  const trueDistanceRef = useRef<number | null>(null)
-  const phaseRef = useRef<Phase>('loading')
+  const gpsBufferRef = useRef<
+    Array<{ lat: number; lng: number; accuracy: number }>
+  >([]);
+  const smoothedPositionRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastGpsUpdateRef = useRef<number>(0);
+  const currentWpRef = useRef<Waypoint | null>(null);
+  const trueDistanceRef = useRef<number | null>(null);
+  const phaseRef = useRef<Phase>("loading");
 
   useEffect(() => {
-    phaseRef.current = phase
-  }, [phase])
+    phaseRef.current = phase;
+  }, [phase]);
 
   useEffect(() => {
     if (route) {
-      currentWpRef.current = route.waypoints[currentWpIndex] ?? null
+      currentWpRef.current = route.waypoints[currentWpIndex] ?? null;
     }
-  }, [route, currentWpIndex])
+  }, [route, currentWpIndex]);
 
   useEffect(() => {
     async function load() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login'); return }
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) {
+        router.push("/login");
+        return;
+      }
 
       const res = await fetch(`/api/routes/${routeId}`, {
-        headers: { Authorization: `Bearer ${session.access_token}` }
-      })
-      const data = res.ok ? await res.json() : null
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const data = res.ok ? await res.json() : null;
 
-      if (!data) { setPhase('error'); return }
+      if (!data) {
+        setPhase("error");
+        return;
+      }
 
-      data.waypoints = (data.waypoints ?? []).sort((a: Waypoint, b: Waypoint) => a.order - b.order)
-      setRoute(data)
-      setPhase('ready')
+      data.waypoints = (data.waypoints ?? []).sort(
+        (a: Waypoint, b: Waypoint) => a.order - b.order
+      );
+      setRoute(data);
+      setPhase("ready");
     }
-    load()
-  }, [routeId, router, supabase.auth])
+    load();
+  }, [routeId, router, supabase.auth]);
 
   useEffect(() => {
-    if (timerRef.current) clearInterval(timerRef.current)
-    timerRef.current = setInterval(() => setElapsedSecs(s => s + 1), 1000)
-    return () => { if (timerRef.current) clearInterval(timerRef.current) }
-  }, [])
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => setElapsedSecs((s) => s + 1), 1000);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
-    if (uiInterpolationRef.current) clearInterval(uiInterpolationRef.current)
+    if (uiInterpolationRef.current) clearInterval(uiInterpolationRef.current);
 
     uiInterpolationRef.current = setInterval(() => {
-      const target = trueDistanceRef.current
-      if (target === null) return
+      const target = trueDistanceRef.current;
+      if (target === null) return;
 
-      setDisplayedDistance(prev => {
-        if (prev === null) return target
+      setDisplayedDistance((prev) => {
+        if (prev === null) return target;
 
-        const diff = target - prev
-        if (Math.abs(diff) < 0.5) return target
+        const diff = target - prev;
+        if (Math.abs(diff) < 0.5) return target;
 
-        const maxStep = MAX_INTERPOLATION_SPEED_MS * UI_UPDATE_INTERVAL_MS
+        const maxStep = MAX_INTERPOLATION_SPEED_MS * UI_UPDATE_INTERVAL_MS;
 
         if (diff < 0) {
-          return Math.max(target, prev + Math.max(diff, -maxStep))
+          return Math.max(target, prev + Math.max(diff, -maxStep));
         } else {
-          return Math.min(target, prev + Math.min(diff, maxStep * 3))
+          return Math.min(target, prev + Math.min(diff, maxStep * 3));
         }
-      })
-    }, UI_UPDATE_INTERVAL_MS)
+      });
+    }, UI_UPDATE_INTERVAL_MS);
 
-    return () => { if (uiInterpolationRef.current) clearInterval(uiInterpolationRef.current) }
-  }, [])
+    return () => {
+      if (uiInterpolationRef.current) clearInterval(uiInterpolationRef.current);
+    };
+  }, []);
 
-  const processGpsReading = useCallback((
-    rawLat: number,
-    rawLng: number,
-    accuracy: number
-  ) => {
-    if (accuracy > MAX_ACCEPTABLE_ACCURACY) return
+  const processGpsReading = useCallback(
+    (rawLat: number, rawLng: number, accuracy: number) => {
+      if (accuracy > MAX_ACCEPTABLE_ACCURACY) return;
 
-    const buffer = gpsBufferRef.current
-    buffer.push({ lat: rawLat, lng: rawLng, accuracy })
+      const buffer = gpsBufferRef.current;
+      buffer.push({ lat: rawLat, lng: rawLng, accuracy });
 
-    if (buffer.length > MOVING_AVERAGE_WINDOW) {
-      buffer.shift()
-    }
+      if (buffer.length > MOVING_AVERAGE_WINDOW) {
+        buffer.shift();
+      }
 
-    lastGpsUpdateRef.current = Date.now()
+      lastGpsUpdateRef.current = Date.now();
 
-    const smoothed = weightedAveragePosition(buffer)
-    smoothedPositionRef.current = smoothed
-    setUserPosition({ lat: smoothed.lat, lng: smoothed.lng, accuracy })
+      const smoothed = weightedAveragePosition(buffer);
+      smoothedPositionRef.current = smoothed;
+      setUserPosition({ lat: smoothed.lat, lng: smoothed.lng, accuracy });
 
-    const wp = currentWpRef.current
-    if (!wp) return
+      const wp = currentWpRef.current;
+      if (!wp) return;
 
-    const dist = haversineMeters(
-      smoothed.lat,
-      smoothed.lng,
-      parseFloat(wp.latitude),
-      parseFloat(wp.longitude)
-    )
+      const dist = haversineMeters(
+        smoothed.lat,
+        smoothed.lng,
+        parseFloat(wp.latitude),
+        parseFloat(wp.longitude)
+      );
 
-    trueDistanceRef.current = dist
-    setTrueDistanceToWp(dist)
+      trueDistanceRef.current = dist;
+      setTrueDistanceToWp(dist);
 
-    const currentPhase = phaseRef.current
-    const effectiveRadius = wp.radiusMeters + 5 
+      const currentPhase = phaseRef.current;
+      const effectiveRadius = wp.radiusMeters + 5;
 
-    if (dist <= effectiveRadius && currentPhase === 'navigating') {
-      setPhase('near-waypoint')
-    } else if (dist > effectiveRadius * 1.15 && currentPhase === 'near-waypoint') {
-      setPhase('navigating')
-    }
-  }, [])
+      if (dist <= effectiveRadius && currentPhase === "navigating") {
+        setPhase("near-waypoint");
+      } else if (
+        dist > effectiveRadius * 1.15 &&
+        currentPhase === "near-waypoint"
+      ) {
+        setPhase("navigating");
+      }
+    },
+    []
+  );
 
   useEffect(() => {
-    const wp = route?.waypoints[currentWpIndex]
-    currentWpRef.current = wp ?? null
+    const wp = route?.waypoints[currentWpIndex];
+    currentWpRef.current = wp ?? null;
 
     if (smoothedPositionRef.current && wp) {
       const dist = haversineMeters(
@@ -258,25 +297,25 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
         smoothedPositionRef.current.lng,
         parseFloat(wp.latitude),
         parseFloat(wp.longitude)
-      )
-      trueDistanceRef.current = dist
-      setTrueDistanceToWp(dist)
+      );
+      trueDistanceRef.current = dist;
+      setTrueDistanceToWp(dist);
     } else {
-      trueDistanceRef.current = null
-      setTrueDistanceToWp(null)
+      trueDistanceRef.current = null;
+      setTrueDistanceToWp(null);
     }
-  }, [currentWpIndex, route])
+  }, [currentWpIndex, route]);
 
   const startRoute = useCallback(async () => {
-    setPhase('acquiring-gps')
-    setError('')
+    setPhase("acquiring-gps");
+    setError("");
 
-    gpsBufferRef.current = []
-    smoothedPositionRef.current = null
-    trueDistanceRef.current = null
+    gpsBufferRef.current = [];
+    smoothedPositionRef.current = null;
+    trueDistanceRef.current = null;
 
     try {
-      setSessionId('sessao_local_' + Date.now())
+      setSessionId("sessao_local_" + Date.now());
 
       const watchId = await Geolocation.watchPosition(
         {
@@ -284,259 +323,338 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
           timeout: 30000,
         },
         (pos, err) => {
-          if (err || !pos) return
+          if (err || !pos) return;
 
-          const accuracy = pos.coords.accuracy
-          const lat = pos.coords.latitude
-          const lng = pos.coords.longitude
+          const accuracy = pos.coords.accuracy;
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
 
-          if (lat === 0 && lng === 0) return
+          if (lat === 0 && lng === 0) return;
 
-          if (phaseRef.current === 'acquiring-gps' && accuracy <= MAX_ACCEPTABLE_ACCURACY) {
-            setPhase('navigating')
+          if (
+            phaseRef.current === "acquiring-gps" &&
+            accuracy <= MAX_ACCEPTABLE_ACCURACY
+          ) {
+            setPhase("navigating");
           }
 
-          processGpsReading(lat, lng, accuracy)
+          processGpsReading(lat, lng, accuracy);
         }
-      )
-      gpsWatchIdRef.current = watchId
-
+      );
+      gpsWatchIdRef.current = watchId;
     } catch (err: any) {
-      setError('Não foi possível iniciar o GPS. Verifique as permissões.')
-      setPhase('ready')
+      setError("Não foi possível iniciar o GPS. Verifique as permissões.");
+      setPhase("ready");
     }
-  }, [processGpsReading])
+  }, [processGpsReading]);
 
   useEffect(() => {
-    return () => { stopGpsAndTimer() }
-  }, [])
+    return () => {
+      stopGpsAndTimer();
+    };
+  }, []);
 
   async function stopGpsAndTimer() {
-    if (timerRef.current) clearInterval(timerRef.current)
-    if (uiInterpolationRef.current) clearInterval(uiInterpolationRef.current)
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (uiInterpolationRef.current) clearInterval(uiInterpolationRef.current);
     if (gpsWatchIdRef.current) {
       try {
-        await Geolocation.clearWatch({ id: gpsWatchIdRef.current })
-      } catch { }
-      gpsWatchIdRef.current = null
+        await Geolocation.clearWatch({ id: gpsWatchIdRef.current });
+      } catch {}
+      gpsWatchIdRef.current = null;
     }
   }
 
-  async function openCameraForCheckin(source: 'camera' | 'gallery') {
-    setPhase('camera-open')
-    setError('')
+  async function openCameraForCheckin(source: "camera" | "gallery") {
+    setPhase("camera-open");
+    setError("");
 
     try {
       const image = await Camera.getPhoto({
         resultType: CameraResultType.DataUrl,
-        source: source === 'camera' ? CameraSource.Camera : CameraSource.Photos,
+        source: source === "camera" ? CameraSource.Camera : CameraSource.Photos,
         direction: CameraDirection.Rear,
         quality: 85,
         width: 1080,
         correctOrientation: true,
-      })
+      });
 
-      if (!image.dataUrl) throw new Error('Foto não capturada')
+      if (!image.dataUrl) throw new Error("Foto não capturada");
 
-      setPhotoDataUrl(image.dataUrl)
-      setPhase('reviewing')
-
+      setPhotoDataUrl(image.dataUrl);
+      setPhase("reviewing");
     } catch (err: any) {
-      const isCancelled = ['cancel', 'cancelado', 'canceled', 'dismissed', 'no image'].some(w => err?.message?.toLowerCase().includes(w))
-      setPhase('near-waypoint')
-      if (!isCancelled) setError('Erro ao abrir a câmera ou galeria.')
+      const isCancelled = [
+        "cancel",
+        "cancelado",
+        "canceled",
+        "dismissed",
+        "no image",
+      ].some((w) => err?.message?.toLowerCase().includes(w));
+      setPhase("near-waypoint");
+      if (!isCancelled) setError("Erro ao abrir a câmera ou galeria.");
     }
   }
 
   async function confirmCheckin() {
-    if (!photoDataUrl || !sessionId || !route || !userPosition) return
+    if (!photoDataUrl || !sessionId || !route || !userPosition) return;
 
-    setPhase('uploading')
-    setError('')
+    setPhase("uploading");
+    setError("");
 
     try {
-      const wp = route.waypoints[currentWpIndex]
-      const distance = trueDistanceRef.current ?? 0
+      const wp = route.waypoints[currentWpIndex];
+      const distance = trueDistanceRef.current ?? 0;
 
-      await new Promise(res => setTimeout(res, 400))
+      await new Promise((res) => setTimeout(res, 400));
 
-      setCompletedCheckins(prev => [...prev, {
-        waypointId: wp.id,
-        photoUrl: photoDataUrl,
-        lat: userPosition.lat,
-        lng: userPosition.lng,
-        distance: Math.round(distance),
-      }])
+      setCompletedCheckins((prev) => [
+        ...prev,
+        {
+          waypointId: wp.id,
+          photoUrl: photoDataUrl,
+          lat: userPosition.lat,
+          lng: userPosition.lng,
+          distance: Math.round(distance),
+        },
+      ]);
 
-      setPhotoDataUrl(null)
+      setPhotoDataUrl(null);
 
-      const isLast = currentWpIndex >= route.waypoints.length - 1
+      const isLast = currentWpIndex >= route.waypoints.length - 1;
 
       if (isLast) {
-        await stopGpsAndTimer()
-        setPhase('concluido')
+        await stopGpsAndTimer();
+        setPhase("concluido");
       } else {
-        gpsBufferRef.current = []
-        setCurrentWpIndex(i => i + 1)
-        setPhase('navigating')
+        gpsBufferRef.current = [];
+        setCurrentWpIndex((i) => i + 1);
+        setPhase("navigating");
       }
-
     } catch (err: any) {
-      setError('Erro ao salvar check-in localmente.')
-      setPhase('near-waypoint')
+      setError("Erro ao salvar check-in localmente.");
+      setPhase("near-waypoint");
     }
   }
 
   const handleFinishAndSync = async () => {
-    if (isSyncingData) return
-    setIsSyncingData(true)
+    if (isSyncingData) return;
+    setIsSyncingData(true);
 
     try {
-      const { Network } = await import('@capacitor/network')
-      const status = await Network.getStatus()
+      const { Network } = await import("@capacitor/network");
+      const status = await Network.getStatus();
 
       if (!status.connected) {
-        const pending = JSON.parse(localStorage.getItem('giro_pending_routes') || '[]')
-        const alreadySaved = pending.find((p: any) => p.routeId === route?.id && p.elapsedSecs === elapsedSecs)
+        const pending = JSON.parse(
+          localStorage.getItem("giro_pending_routes") || "[]"
+        );
+        const alreadySaved = pending.find(
+          (p: any) => p.routeId === route?.id && p.elapsedSecs === elapsedSecs
+        );
         if (!alreadySaved) {
           pending.push({
             routeId: route?.id,
             distanceKm: route?.distanceKm,
             elapsedSecs,
-            checkins: completedCheckins
-          })
-          localStorage.setItem('giro_pending_routes', JSON.stringify(pending))
+            checkins: completedCheckins,
+          });
+          localStorage.setItem("giro_pending_routes", JSON.stringify(pending));
         }
-        setPhase('offline-completed')
-        setIsSyncingData(false)
-        return
+        setPhase("offline-completed");
+        setIsSyncingData(false);
+        return;
       }
 
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error("Usuário não logado.")
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) throw new Error("Usuário não logado.");
 
-      const finalCheckins = []
+      const finalCheckins = [];
 
       for (const c of completedCheckins) {
-        const resBlob = await fetch(c.photoUrl)
-        const blob = await resBlob.blob()
-        const filePath = `checkins/${session.user.id}/${c.waypointId}-${Date.now()}.jpg`
+        const resBlob = await fetch(c.photoUrl);
+        const blob = await resBlob.blob();
+        const filePath = `checkins/${session.user.id}/${
+          c.waypointId
+        }-${Date.now()}.jpg`;
 
         const { error: uploadError } = await supabase.storage
-          .from('giro-app')
-          .upload(filePath, blob, { contentType: 'image/jpeg' })
+          .from("giro-app")
+          .upload(filePath, blob, { contentType: "image/jpeg" });
 
-        if (uploadError) throw new Error(`Erro no Supabase Storage: ${uploadError.message}`)
+        if (uploadError)
+          throw new Error(`Erro no Supabase Storage: ${uploadError.message}`);
 
-        const { data: { publicUrl } } = supabase.storage.from('giro-app').getPublicUrl(filePath)
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from("giro-app").getPublicUrl(filePath);
 
         finalCheckins.push({
           waypointId: c.waypointId,
           photoUrl: publicUrl,
           lat: c.lat,
           lng: c.lng,
-          distance: c.distance
-        })
+          distance: c.distance,
+        });
       }
 
-      const res = await fetch('/api/sync/complete-route', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/sync/complete-route", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           routeId: route?.id,
           distanceKm: route?.distanceKm,
           elapsedSecs,
-          checkins: finalCheckins
-        })
-      })
+          checkins: finalCheckins,
+        }),
+      });
 
       if (!res.ok) {
-        const errData = await res.json()
-        throw new Error(`Erro na API: ${errData.error || 'Desconhecido'}`)
+        const errData = await res.json();
+        throw new Error(`Erro na API: ${errData.error || "Desconhecido"}`);
       }
 
-      router.replace('/profile')
-
+      router.replace("/profile");
     } catch (err: any) {
-      alert(`Falha ao sincronizar:\n${err.message}\n\nTente novamente.`)
-      setIsSyncingData(false)
+      alert(`Falha ao sincronizar:\n${err.message}\n\nTente novamente.`);
+      setIsSyncingData(false);
     }
-  }
+  };
 
-  if (phase === 'offline-completed') {
+  if (phase === "offline-completed") {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center font-[family-name:var(--font-dm)] p-6 text-center"
-        style={{ background: '#FFF8F5' }}>
-        <div className="w-24 h-24 rounded-3xl flex items-center justify-center mb-6 shadow-xl"
-          style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
+      <div
+        className="min-h-screen flex flex-col items-center justify-center font-[family-name:var(--font-dm)] p-6 text-center"
+        style={{ background: "#FFF8F5" }}
+      >
+        <div
+          className="w-24 h-24 rounded-3xl flex items-center justify-center mb-6 shadow-xl"
+          style={{ background: "linear-gradient(135deg, #830200, #E05300)" }}
+        >
           <span className="text-5xl">🌲</span>
         </div>
-        <h2 className="text-2xl font-black text-gray-900 mb-2">Salvo no celular!</h2>
+        <h2 className="text-2xl font-black text-gray-900 mb-2">
+          Salvo no celular!
+        </h2>
         <p className="text-gray-500 text-sm mb-8 leading-relaxed px-4">
-          Você está sem internet no momento. Sua trilha e fotos foram guardadas em segurança no seu aparelho.<br /><br />
-          Assim que se conectar a uma rede Wi-Fi ou 4G, abra o aplicativo para sincronizar seus dados e receber sua insígnia.
+          Você está sem internet no momento. Sua trilha e fotos foram guardadas
+          em segurança no seu aparelho.
+          <br />
+          <br />
+          Assim que se conectar a uma rede Wi-Fi ou 4G, abra o aplicativo para
+          sincronizar seus dados e receber sua insígnia.
         </p>
-        <button onClick={() => window.location.href = '/home'}
+        <button
+          onClick={() => (window.location.href = "/home")}
           className="w-full py-4 rounded-2xl text-white font-black text-sm shadow-lg max-w-xs"
-          style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
+          style={{ background: "linear-gradient(135deg, #830200, #E05300)" }}
+        >
           Voltar ao Início
         </button>
       </div>
-    )
+    );
   }
 
-  if (phase === 'loading') {
+  if (phase === "loading") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 rounded-full animate-spin" style={{ border: '3px solid #F0F0F0', borderTop: '3px solid #E05300' }} />
+          <div
+            className="w-10 h-10 rounded-full animate-spin"
+            style={{
+              border: "3px solid #F0F0F0",
+              borderTop: "3px solid #E05300",
+            }}
+          />
           <p className="text-gray-400 text-sm">Carregando rota...</p>
         </div>
       </div>
-    )
+    );
   }
 
-  if (phase === 'error') {
+  if (phase === "error") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-white px-6 gap-4">
         <span className="text-5xl">😕</span>
-        <p className="text-gray-700 font-bold text-center">Rota não encontrada</p>
-        <button onClick={() => router.back()} className="px-6 py-3 rounded-xl text-white font-bold text-sm" style={{ background: 'linear-gradient(135deg,#830200,#E05300)' }}>
+        <p className="text-gray-700 font-bold text-center">
+          Rota não encontrada
+        </p>
+        <button
+          onClick={() => router.back()}
+          className="px-6 py-3 rounded-xl text-white font-bold text-sm"
+          style={{ background: "linear-gradient(135deg,#830200,#E05300)" }}
+        >
           Voltar
         </button>
       </div>
-    )
+    );
   }
 
-  const currentWp = route?.waypoints[currentWpIndex]
-  const progressPercent = route ? (completedCheckins.length / route.waypoints.length) * 100 : 0
+  const currentWp = route?.waypoints[currentWpIndex];
+  const progressPercent = route
+    ? (completedCheckins.length / route.waypoints.length) * 100
+    : 0;
 
-  if (phase === 'concluido') {
+  if (phase === "concluido") {
     return (
       <div className="min-h-screen flex flex-col bg-white font-[family-name:var(--font-dm)]">
-        <div className="relative overflow-hidden px-6 pt-12 pb-16" style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
-          <svg className="absolute inset-0 w-full h-full opacity-10" viewBox="0 0 375 200" preserveAspectRatio="xMidYMid slice">
-            <path d="M0,100 Q93,60 187,100 Q280,140 375,100" fill="none" stroke="#fff" strokeWidth="1.5" />
+        <div
+          className="relative overflow-hidden px-6 pt-12 pb-16"
+          style={{
+            background:
+              "linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)",
+          }}
+        >
+          <svg
+            className="absolute inset-0 w-full h-full opacity-10"
+            viewBox="0 0 375 200"
+            preserveAspectRatio="xMidYMid slice"
+          >
+            <path
+              d="M0,100 Q93,60 187,100 Q280,140 375,100"
+              fill="none"
+              stroke="#fff"
+              strokeWidth="1.5"
+            />
           </svg>
           <div className="relative z-10 text-center">
-            <p className="text-white/70 text-sm font-medium mb-1">Parabéns! Você concluiu</p>
-            <h1 className="text-white font-black text-2xl leading-tight">{route?.name}</h1>
+            <p className="text-white/70 text-sm font-medium mb-1">
+              Parabéns! Você concluiu
+            </p>
+            <h1 className="text-white font-black text-2xl leading-tight">
+              {route?.name}
+            </h1>
           </div>
           <div className="absolute bottom-0 left-0 right-0 h-8 bg-white rounded-t-3xl" />
         </div>
 
         <div className="flex-1 px-6 pt-4 pb-10 flex flex-col items-center">
-          <div className="w-28 h-28 rounded-3xl flex items-center justify-center mb-6 mt-2 shadow-xl" style={{ background: 'linear-gradient(135deg, #FFD700, #FFA500)' }}>
+          <div
+            className="w-28 h-28 rounded-3xl flex items-center justify-center mb-6 mt-2 shadow-xl"
+            style={{ background: "linear-gradient(135deg, #FFD700, #FFA500)" }}
+          >
             <span className="text-6xl">🏆</span>
           </div>
 
           <div className="grid grid-cols-3 gap-3 w-full mb-6">
             {[
-              { label: 'Check-ins', value: completedCheckins.length.toString() },
-              { label: 'Tempo', value: formatTime(elapsedSecs) },
-              { label: 'Distância', value: route?.distanceKm ? `${route.distanceKm}km` : '—' },
-            ].map(s => (
-              <div key={s.label} className="rounded-2xl p-3 text-center" style={{ background: '#FFF8F5', border: '1.5px solid #FFE0D0' }}>
+              {
+                label: "Check-ins",
+                value: completedCheckins.length.toString(),
+              },
+              { label: "Tempo", value: formatTime(elapsedSecs) },
+              {
+                label: "Distância",
+                value: route?.distanceKm ? `${route.distanceKm}km` : "—",
+              },
+            ].map((s) => (
+              <div
+                key={s.label}
+                className="rounded-2xl p-3 text-center"
+                style={{ background: "#FFF8F5", border: "1.5px solid #FFE0D0" }}
+              >
                 <p className="font-black text-gray-900 text-base">{s.value}</p>
                 <p className="text-gray-400 text-[10px] mt-0.5">{s.label}</p>
               </div>
@@ -545,27 +663,37 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
 
           {completedCheckins.length > 0 && (
             <div className="w-full mb-6">
-              <p className="text-sm font-black text-gray-700 mb-3">Suas fotos do local</p>
+              <p className="text-sm font-black text-gray-700 mb-3">
+                Suas fotos do local
+              </p>
               <div className="flex gap-2 overflow-x-auto pb-1">
                 {completedCheckins.map((c, i) => (
-                  <img key={c.waypointId} src={c.photoUrl} alt={`Check-in ${i + 1}`}
+                  <img
+                    key={c.waypointId}
+                    src={c.photoUrl}
+                    alt={`Check-in ${i + 1}`}
                     className="w-20 h-20 rounded-2xl object-cover flex-shrink-0 shadow-sm"
-                    style={{ border: '2px solid #FFE0D0' }} />
+                    style={{ border: "2px solid #FFE0D0" }}
+                  />
                 ))}
               </div>
             </div>
           )}
 
           <div className="bg-orange-50 w-full p-4 rounded-xl text-center mb-6">
-            <p className="text-orange-700 text-xs font-bold">A trilha acabou!</p>
-            <p className="text-orange-600/80 text-[10px] mt-1">Clique abaixo para enviar suas conquistas para o seu Perfil.</p>
+            <p className="text-orange-700 text-xs font-bold">
+              A trilha acabou!
+            </p>
+            <p className="text-orange-600/80 text-[10px] mt-1">
+              Clique abaixo para enviar suas conquistas para o seu Perfil.
+            </p>
           </div>
 
           <button
             onClick={handleFinishAndSync}
             disabled={isSyncingData}
             className="w-full py-4 rounded-2xl text-white font-black text-sm flex items-center justify-center shadow-lg disabled:opacity-70"
-            style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}
+            style={{ background: "linear-gradient(135deg, #830200, #E05300)" }}
           >
             {isSyncingData ? (
               <span className="flex items-center gap-2">
@@ -573,83 +701,166 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
                 Enviando para a nuvem...
               </span>
             ) : (
-              'Finalizar e Salvar Rota 🚀'
+              "Finalizar e Salvar Rota 🚀"
             )}
           </button>
         </div>
       </div>
-    )
+    );
   }
 
-  if (phase === 'reviewing' && photoDataUrl) {
+  if (phase === "reviewing" && photoDataUrl) {
     return (
       <div className="min-h-screen flex flex-col bg-black font-[family-name:var(--font-dm)]">
-        <img src={photoDataUrl} alt="Foto do Ponto" className="absolute inset-0 w-full h-full object-cover" />
-        <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.6) 0%, transparent 40%, transparent 60%, rgba(0,0,0,0.8) 100%)' }} />
+        <img
+          src={photoDataUrl}
+          alt="Foto do Ponto"
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "linear-gradient(to bottom, rgba(0,0,0,0.6) 0%, transparent 40%, transparent 60%, rgba(0,0,0,0.8) 100%)",
+          }}
+        />
 
         <div className="relative z-10 px-5 pt-12">
-          <p className="text-white/60 text-xs font-bold uppercase tracking-wider">Check-in no Ponto</p>
-          <h2 className="text-white font-black text-xl leading-tight">{currentWp?.name}</h2>
+          <p className="text-white/60 text-xs font-bold uppercase tracking-wider">
+            Check-in no Ponto
+          </p>
+          <h2 className="text-white font-black text-xl leading-tight">
+            {currentWp?.name}
+          </h2>
         </div>
 
         <div className="relative z-10 mt-auto px-5 pb-10 flex flex-col gap-3">
-          <button onClick={confirmCheckin} className="w-full py-4 rounded-2xl font-black text-base text-white flex items-center justify-center gap-2 shadow-lg" style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
+          <button
+            onClick={confirmCheckin}
+            className="w-full py-4 rounded-2xl font-black text-base text-white flex items-center justify-center gap-2 shadow-lg"
+            style={{ background: "linear-gradient(135deg, #830200, #E05300)" }}
+          >
             ✅ Salvar e Continuar
           </button>
 
           <div className="flex gap-3">
-            <button onClick={() => openCameraForCheckin('camera')} className="flex-1 py-3.5 rounded-2xl font-bold text-sm border-2 border-white/40 text-white" style={{ background: 'rgba(255,255,255,0.15)' }}>
+            <button
+              onClick={() => openCameraForCheckin("camera")}
+              className="flex-1 py-3.5 rounded-2xl font-bold text-sm border-2 border-white/40 text-white"
+              style={{ background: "rgba(255,255,255,0.15)" }}
+            >
               📷 Tirar outra
             </button>
-            <button onClick={() => openCameraForCheckin('gallery')} className="flex-1 py-3.5 rounded-2xl font-bold text-sm border-2 border-white/40 text-white" style={{ background: 'rgba(255,255,255,0.15)' }}>
+            <button
+              onClick={() => openCameraForCheckin("gallery")}
+              className="flex-1 py-3.5 rounded-2xl font-bold text-sm border-2 border-white/40 text-white"
+              style={{ background: "rgba(255,255,255,0.15)" }}
+            >
               🖼️ Galeria
             </button>
           </div>
 
-          <button onClick={() => { setPhotoDataUrl(null); setPhase('near-waypoint') }} className="text-white/60 text-sm font-semibold text-center py-2">
+          <button
+            onClick={() => {
+              setPhotoDataUrl(null);
+              setPhase("near-waypoint");
+            }}
+            className="text-white/60 text-sm font-semibold text-center py-2"
+          >
             Cancelar
           </button>
         </div>
       </div>
-    )
+    );
   }
 
-  const isUploading = phase === 'uploading'
-  const isAcquiring = phase === 'acquiring-gps'
-  const canCheckin = phase === 'near-waypoint' || phase === 'camera-open'
-  const accInfo = userPosition ? accuracyLabel(userPosition.accuracy) : null
+  const isUploading = phase === "uploading";
+  const isAcquiring = phase === "acquiring-gps";
+  const canCheckin = phase === "near-waypoint" || phase === "camera-open";
+  const accInfo = userPosition ? accuracyLabel(userPosition.accuracy) : null;
 
-  const distanceToDisplay = displayedDistance ?? trueDistanceToWp
+  const distanceToDisplay = displayedDistance ?? trueDistanceToWp;
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 font-[family-name:var(--font-dm)]">
-      <div className="relative overflow-hidden px-5 pt-12 pb-16" style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
-        <svg className="absolute inset-0 w-full h-full opacity-10" viewBox="0 0 375 200" preserveAspectRatio="xMidYMid slice">
-          <path d="M0,100 Q93,60 187,100 Q280,140 375,100" fill="none" stroke="#fff" strokeWidth="1.5" />
+      <div
+        className="relative overflow-hidden px-5 pt-12 pb-16"
+        style={{
+          background:
+            "linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)",
+        }}
+      >
+        <svg
+          className="absolute inset-0 w-full h-full opacity-10"
+          viewBox="0 0 375 200"
+          preserveAspectRatio="xMidYMid slice"
+        >
+          <path
+            d="M0,100 Q93,60 187,100 Q280,140 375,100"
+            fill="none"
+            stroke="#fff"
+            strokeWidth="1.5"
+          />
         </svg>
 
         <div className="relative z-10 flex items-center justify-between mb-5">
-          <button onClick={() => { stopGpsAndTimer(); router.back() }} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.2)' }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><polyline points="15 18 9 12 15 6" /></svg>
+          <button
+            onClick={() => {
+              stopGpsAndTimer();
+              router.back();
+            }}
+            className="w-9 h-9 rounded-full flex items-center justify-center"
+            style={{ background: "rgba(255,255,255,0.2)" }}
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="white"
+              strokeWidth="2.5"
+            >
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
           </button>
 
           <div className="text-center">
-            <p className="text-white/60 text-[10px] font-bold uppercase tracking-wider">Tempo</p>
-            <p className="text-white font-black text-xl tabular-nums">{formatTime(elapsedSecs)}</p>
+            <p className="text-white/60 text-[10px] font-bold uppercase tracking-wider">
+              Tempo
+            </p>
+            <p className="text-white font-black text-xl tabular-nums">
+              {formatTime(elapsedSecs)}
+            </p>
           </div>
 
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ background: 'rgba(255,255,255,0.2)' }}>
-            <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: accInfo?.color ?? '#fff' }} />
+          <div
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full"
+            style={{ background: "rgba(255,255,255,0.2)" }}
+          >
+            <div
+              className="w-2 h-2 rounded-full animate-pulse"
+              style={{ background: accInfo?.color ?? "#fff" }}
+            />
             <span className="text-white text-[10px] font-bold">
-              {isAcquiring ? 'GPS...' : accInfo ? `±${Math.round(userPosition!.accuracy)}m` : '—'}
+              {isAcquiring
+                ? "GPS..."
+                : accInfo
+                ? `±${Math.round(userPosition!.accuracy)}m`
+                : "—"}
             </span>
           </div>
         </div>
 
         <div className="relative z-10">
           <p className="text-white/60 text-xs font-medium">{route?.name}</p>
-          <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.2)' }}>
-            <div className="h-full rounded-full transition-all duration-700" style={{ width: `${progressPercent}%`, background: 'white' }} />
+          <div
+            className="mt-2 h-1.5 rounded-full overflow-hidden"
+            style={{ background: "rgba(255,255,255,0.2)" }}
+          >
+            <div
+              className="h-full rounded-full transition-all duration-700"
+              style={{ width: `${progressPercent}%`, background: "white" }}
+            />
           </div>
           <p className="text-white/60 text-[10px] mt-1 font-medium">
             {completedCheckins.length} de {route?.waypoints.length} pontos
@@ -660,18 +871,29 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
       </div>
 
       <div className="flex-1 px-5 -mt-2">
-        {phase === 'ready' && (
+        {phase === "ready" && (
           <div className="pt-4">
             <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm mb-4">
-              <p className="text-xs font-black text-gray-400 uppercase tracking-wider mb-3">Primeiro ponto</p>
-              <h2 className="text-xl font-black text-gray-900 mb-1">{route?.waypoints[0]?.name}</h2>
+              <p className="text-xs font-black text-gray-400 uppercase tracking-wider mb-3">
+                Primeiro ponto
+              </p>
+              <h2 className="text-xl font-black text-gray-900 mb-1">
+                {route?.waypoints[0]?.name}
+              </h2>
               {route?.waypoints[0]?.description && (
-                <p className="text-gray-500 text-sm">{route.waypoints[0].description}</p>
+                <p className="text-gray-500 text-sm">
+                  {route.waypoints[0].description}
+                </p>
               )}
             </div>
 
-            <div className="bg-white rounded-2xl p-4 border border-orange-100 mb-6" style={{ background: '#FFF8F5' }}>
-              <p className="text-[11px] font-black text-orange-700 mb-2">⚠️ Antes de iniciar:</p>
+            <div
+              className="bg-white rounded-2xl p-4 border border-orange-100 mb-6"
+              style={{ background: "#FFF8F5" }}
+            >
+              <p className="text-[11px] font-black text-orange-700 mb-2">
+                ⚠️ Antes de iniciar:
+              </p>
               <ul className="text-xs text-orange-600/80 flex flex-col gap-1">
                 <li>• O GPS funcionará mesmo offline</li>
                 <li>• Fique ao ar livre para melhor sinal</li>
@@ -679,9 +901,19 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
               </ul>
             </div>
 
-            {error && <div className="rounded-xl px-4 py-3 bg-red-50 border border-red-100 mb-4"><p className="text-red-500 text-sm">{error}</p></div>}
+            {error && (
+              <div className="rounded-xl px-4 py-3 bg-red-50 border border-red-100 mb-4">
+                <p className="text-red-500 text-sm">{error}</p>
+              </div>
+            )}
 
-            <button onClick={startRoute} className="w-full py-4 rounded-2xl text-white font-black text-base flex items-center justify-center gap-2 shadow-lg" style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
+            <button
+              onClick={startRoute}
+              className="w-full py-4 rounded-2xl text-white font-black text-base flex items-center justify-center gap-2 shadow-lg"
+              style={{
+                background: "linear-gradient(135deg, #830200, #E05300)",
+              }}
+            >
               🚀 Iniciar trilha
             </button>
           </div>
@@ -690,19 +922,36 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
         {isAcquiring && (
           <div className="pt-6 flex flex-col items-center gap-5">
             <div className="relative w-24 h-24 mt-4">
-              <div className="absolute inset-0 rounded-full animate-ping opacity-25" style={{ background: '#E05300' }} />
-              <div className="absolute inset-2 rounded-full animate-ping opacity-30" style={{ background: '#E05300', animationDelay: '0.3s' }} />
-              <div className="absolute inset-4 rounded-full flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
+              <div
+                className="absolute inset-0 rounded-full animate-ping opacity-25"
+                style={{ background: "#E05300" }}
+              />
+              <div
+                className="absolute inset-2 rounded-full animate-ping opacity-30"
+                style={{ background: "#E05300", animationDelay: "0.3s" }}
+              />
+              <div
+                className="absolute inset-4 rounded-full flex items-center justify-center"
+                style={{
+                  background: "linear-gradient(135deg, #830200, #E05300)",
+                }}
+              >
                 <span className="text-2xl">📡</span>
               </div>
             </div>
             <div className="text-center">
-              <p className="text-gray-700 font-black text-lg">Buscando sinal GPS</p>
+              <p className="text-gray-700 font-black text-lg">
+                Buscando sinal GPS
+              </p>
               <p className="text-gray-400 text-sm mt-1">
-                Fique ao ar livre · Aguardando precisão ≤ {MAX_ACCEPTABLE_ACCURACY}m
+                Fique ao ar livre · Aguardando precisão ≤{" "}
+                {MAX_ACCEPTABLE_ACCURACY}m
               </p>
               {userPosition && (
-                <p className="text-xs mt-2 font-bold" style={{ color: accInfo?.color ?? '#888' }}>
+                <p
+                  className="text-xs mt-2 font-bold"
+                  style={{ color: accInfo?.color ?? "#888" }}
+                >
                   Precisão atual: ±{Math.round(userPosition.accuracy)}m
                 </p>
               )}
@@ -710,116 +959,183 @@ export default function CheckinClient({ params }: { params: Promise<{ id: string
           </div>
         )}
 
-        {(phase === 'navigating' || phase === 'near-waypoint' || phase === 'camera-open' || isUploading) && currentWp && (
-          <div className="pt-4">
-            <div className="bg-white rounded-3xl overflow-hidden border border-gray-100 shadow-sm mb-4">
-              <div className="px-5 pt-4 pb-3 border-b border-gray-50">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center font-black text-sm text-white flex-shrink-0" style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
-                    {currentWpIndex + 1}
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Destino atual</p>
-                    <h2 className="font-black text-gray-900 text-base leading-tight">{currentWp.name}</h2>
-                  </div>
-                </div>
-              </div>
-
-              <div className="px-5 py-5 flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Distância</p>
-                  {distanceToDisplay !== null ? (
-                    <p
-                      className="font-black text-3xl tabular-nums"
+        {(phase === "navigating" ||
+          phase === "near-waypoint" ||
+          phase === "camera-open" ||
+          isUploading) &&
+          currentWp && (
+            <div className="pt-4">
+              <div className="bg-white rounded-3xl overflow-hidden border border-gray-100 shadow-sm mb-4">
+                <div className="px-5 pt-4 pb-3 border-b border-gray-50">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center font-black text-sm text-white flex-shrink-0"
                       style={{
-                        color: distanceToDisplay <= (currentWp.radiusMeters + 5) ? '#22c55e' : '#E05300',
-                        transition: 'color 0.6s ease',
+                        background: "linear-gradient(135deg, #830200, #E05300)",
                       }}
                     >
-                      {formatDistance(distanceToDisplay)}
-                    </p>
-                  ) : (
-                    <p className="text-gray-400 font-bold">Calculando...</p>
-                  )}
+                      {currentWpIndex + 1}
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                        Destino atual
+                      </p>
+                      <h2 className="font-black text-gray-900 text-base leading-tight">
+                        {currentWp.name}
+                      </h2>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="flex flex-col items-center gap-1">
-                  <div
-                    className="w-14 h-14 rounded-full flex items-center justify-center text-2xl"
-                    style={{
-                      background: phase === 'near-waypoint' ? '#dcfce7' : '#FFF0EB',
-                      border: `2px solid ${phase === 'near-waypoint' ? '#22c55e' : '#E05300'}`,
-                      transition: 'all 0.4s ease',
-                    }}
-                  >
-                    {phase === 'near-waypoint' ? '✅' : '🧭'}
+                <div className="px-5 py-5 flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+                      Distância
+                    </p>
+                    {distanceToDisplay !== null ? (
+                      <p
+                        className="font-black text-3xl tabular-nums"
+                        style={{
+                          color:
+                            distanceToDisplay <= currentWp.radiusMeters + 5
+                              ? "#22c55e"
+                              : "#E05300",
+                          transition: "color 0.6s ease",
+                        }}
+                      >
+                        {formatDistance(distanceToDisplay)}
+                      </p>
+                    ) : (
+                      <p className="text-gray-400 font-bold">Calculando...</p>
+                    )}
                   </div>
-                  <p
-                    className="text-[10px] font-bold"
-                    style={{
-                      color: phase === 'near-waypoint' ? '#22c55e' : '#E05300',
-                      transition: 'color 0.4s ease',
-                    }}
+
+                  <div className="flex flex-col items-center gap-1">
+                    <div
+                      className="w-14 h-14 rounded-full flex items-center justify-center text-2xl"
+                      style={{
+                        background:
+                          phase === "near-waypoint" ? "#dcfce7" : "#FFF0EB",
+                        border: `2px solid ${
+                          phase === "near-waypoint" ? "#22c55e" : "#E05300"
+                        }`,
+                        transition: "all 0.4s ease",
+                      }}
+                    >
+                      {phase === "near-waypoint" ? "✅" : "🧭"}
+                    </div>
+                    <p
+                      className="text-[10px] font-bold"
+                      style={{
+                        color:
+                          phase === "near-waypoint" ? "#22c55e" : "#E05300",
+                        transition: "color 0.4s ease",
+                      }}
+                    >
+                      {phase === "near-waypoint" ? "No local!" : "A caminho"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="px-5 pb-4">
+                  <div
+                    className="rounded-xl px-3 py-2 text-xs font-medium"
+                    style={{ background: "#F7F7F7", color: "#888" }}
                   >
-                    {phase === 'near-waypoint' ? 'No local!' : 'A caminho'}
+                    Raio de captura: {currentWp.radiusMeters}m
+                    {currentWp.requiresSelfie && " · Foto obrigatória"}
+                  </div>
+                </div>
+              </div>
+
+              {userPosition && accInfo && (
+                <div className="bg-white rounded-2xl px-4 py-3 mb-4 flex items-center gap-3 border border-gray-100">
+                  <div
+                    className="w-2 h-2 rounded-full flex-shrink-0"
+                    style={{ background: accInfo.color }}
+                  />
+                  <p className="text-xs text-gray-500 font-medium">
+                    GPS {accInfo.text} · ±{Math.round(userPosition.accuracy)}m
+                    {userPosition.accuracy > MAX_ACCEPTABLE_ACCURACY && (
+                      <span className="ml-1 text-amber-500 font-bold">
+                        {" "}
+                        · aguardando melhor sinal
+                      </span>
+                    )}
                   </p>
                 </div>
-              </div>
+              )}
 
-              <div className="px-5 pb-4">
-                <div className="rounded-xl px-3 py-2 text-xs font-medium" style={{ background: '#F7F7F7', color: '#888' }}>
-                  Raio de captura: {currentWp.radiusMeters}m
-                  {currentWp.requiresSelfie && ' · Foto obrigatória'}
+              {error && (
+                <div className="rounded-xl px-4 py-3 bg-red-50 border border-red-100 mb-4">
+                  <p className="text-red-500 text-sm">{error}</p>
                 </div>
-              </div>
+              )}
+
+              {isUploading ? (
+                <div
+                  className="w-full py-4 rounded-2xl flex items-center justify-center gap-2 text-white font-bold"
+                  style={{
+                    background: "linear-gradient(135deg, #830200, #E05300)",
+                    opacity: 0.8,
+                  }}
+                >
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />{" "}
+                  Salvando na memória...
+                </div>
+              ) : canCheckin ? (
+                <div className="flex flex-col gap-3">
+                  <button
+                    onClick={() => openCameraForCheckin("camera")}
+                    className="w-full py-4 rounded-2xl text-white font-black text-base shadow-lg active:scale-[0.98] flex items-center justify-center gap-2"
+                    style={{
+                      background: "linear-gradient(135deg, #830200, #E05300)",
+                    }}
+                  >
+                    📸 Tirar foto do local
+                  </button>
+                  <button
+                    onClick={() => openCameraForCheckin("gallery")}
+                    className="w-full py-3 rounded-2xl font-bold text-sm border-2 active:scale-[0.98] flex items-center justify-center gap-2"
+                    style={{
+                      borderColor: "#E05300",
+                      color: "#E05300",
+                      background: "#FFF8F5",
+                    }}
+                  >
+                    🖼️ Escolher da galeria
+                  </button>
+                </div>
+              ) : (
+                <div
+                  className="w-full py-4 rounded-2xl text-center font-bold text-sm"
+                  style={{ background: "#EAEAEA", color: "#AAA" }}
+                >
+                  📍 Aproxime-se para fotografar
+                </div>
+              )}
+
+              {completedCheckins.length > 0 && (
+                <div className="mt-5">
+                  <p className="text-xs font-black text-gray-400 uppercase tracking-wider mb-3">
+                    Concluídos ({completedCheckins.length})
+                  </p>
+                  <div className="flex gap-2">
+                    {completedCheckins.map((c, i) => (
+                      <img
+                        key={c.waypointId}
+                        src={c.photoUrl}
+                        alt={`Check-in ${i + 1}`}
+                        className="w-14 h-14 rounded-xl object-cover shadow-sm"
+                        style={{ border: "2px solid #22c55e" }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-
-            {userPosition && accInfo && (
-              <div className="bg-white rounded-2xl px-4 py-3 mb-4 flex items-center gap-3 border border-gray-100">
-                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: accInfo.color }} />
-                <p className="text-xs text-gray-500 font-medium">
-                  GPS {accInfo.text} · ±{Math.round(userPosition.accuracy)}m
-                  {userPosition.accuracy > MAX_ACCEPTABLE_ACCURACY && (
-                    <span className="ml-1 text-amber-500 font-bold"> · aguardando melhor sinal</span>
-                  )}
-                </p>
-              </div>
-            )}
-
-            {error && <div className="rounded-xl px-4 py-3 bg-red-50 border border-red-100 mb-4"><p className="text-red-500 text-sm">{error}</p></div>}
-
-            {isUploading ? (
-              <div className="w-full py-4 rounded-2xl flex items-center justify-center gap-2 text-white font-bold" style={{ background: 'linear-gradient(135deg, #830200, #E05300)', opacity: 0.8 }}>
-                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Salvando na memória...
-              </div>
-            ) : canCheckin ? (
-              <div className="flex flex-col gap-3">
-                <button onClick={() => openCameraForCheckin('camera')} className="w-full py-4 rounded-2xl text-white font-black text-base shadow-lg active:scale-[0.98] flex items-center justify-center gap-2" style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>
-                  📸 Tirar foto do local
-                </button>
-                <button onClick={() => openCameraForCheckin('gallery')} className="w-full py-3 rounded-2xl font-bold text-sm border-2 active:scale-[0.98] flex items-center justify-center gap-2" style={{ borderColor: '#E05300', color: '#E05300', background: '#FFF8F5' }}>
-                  🖼️ Escolher da galeria
-                </button>
-              </div>
-            ) : (
-              <div className="w-full py-4 rounded-2xl text-center font-bold text-sm" style={{ background: '#EAEAEA', color: '#AAA' }}>
-                📍 Aproxime-se para fotografar
-              </div>
-            )}
-
-            {completedCheckins.length > 0 && (
-              <div className="mt-5">
-                <p className="text-xs font-black text-gray-400 uppercase tracking-wider mb-3">Concluídos ({completedCheckins.length})</p>
-                <div className="flex gap-2">
-                  {completedCheckins.map((c, i) => (
-                    <img key={c.waypointId} src={c.photoUrl} alt={`Check-in ${i + 1}`} className="w-14 h-14 rounded-xl object-cover shadow-sm" style={{ border: '2px solid #22c55e' }} />
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+          )}
       </div>
     </div>
-  )
+  );
 }

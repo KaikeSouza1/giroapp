@@ -1,43 +1,44 @@
-
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db/remote/client'
-import { routes, waypoints, organizations } from '@/lib/db/remote/schema'
-import { eq, asc } from 'drizzle-orm'
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/db/remote/client";
+import { routes, waypoints, organizations } from "@/lib/db/remote/schema";
+import { eq, asc } from "drizzle-orm";
 
 export async function GET(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    
-    const resolvedParams = await context.params
-    const routeId = resolvedParams.id
+    const resolvedParams = await context.params;
+    const routeId = resolvedParams.id;
 
-    const [route] = await db.select({
-      id: routes.id,
-      name: routes.name,
-      description: routes.description,
-      difficulty: routes.difficulty,
-      type: routes.type,
-      distanceKm: routes.distanceKm,
-      estimatedMinutes: routes.estimatedMinutes,
-      coverImageUrl: routes.coverImageUrl,
-      status: routes.status,
-      organizationName: organizations.name,
-    })
-    .from(routes)
-    .leftJoin(organizations, eq(routes.organizationId, organizations.id))
-    .where(eq(routes.id, routeId))
-    .limit(1)
+    const [route] = await db
+      .select({
+        id: routes.id,
+        name: routes.name,
+        description: routes.description,
+        difficulty: routes.difficulty,
+        type: routes.type,
+        distanceKm: routes.distanceKm,
+        estimatedMinutes: routes.estimatedMinutes,
+        coverImageUrl: routes.coverImageUrl,
+        status: routes.status,
+        organizationName: organizations.name,
+      })
+      .from(routes)
+      .leftJoin(organizations, eq(routes.organizationId, organizations.id))
+      .where(eq(routes.id, routeId))
+      .limit(1);
 
-    if (!route) return NextResponse.json(null, { status: 404 })
+    if (!route) return NextResponse.json(null, { status: 404 });
 
-    const wps = await db.select().from(waypoints)
+    const wps = await db
+      .select()
+      .from(waypoints)
       .where(eq(waypoints.routeId, routeId))
-      .orderBy(asc(waypoints.order))
+      .orderBy(asc(waypoints.order));
 
-    return NextResponse.json({ ...route, waypoints: wps })
+    return NextResponse.json({ ...route, waypoints: wps });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

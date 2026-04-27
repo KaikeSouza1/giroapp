@@ -1,12 +1,10 @@
-
-import { drizzle } from 'drizzle-orm/postgres-js'
-import postgres from 'postgres'
-import * as schema from './schema'
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import * as schema from "./schema";
 
 const globalForDb = globalThis as unknown as {
-  connection: postgres.Sql | undefined
-}
-
+  connection: postgres.Sql | undefined;
+};
 
 const connection =
   globalForDb.connection ??
@@ -14,11 +12,11 @@ const connection =
     max: 10,
     idle_timeout: 20,
     connect_timeout: 10,
-    prepare: false, 
-  })
+    prepare: false,
+  });
 
-if (process.env.NODE_ENV !== 'production') {
-  globalForDb.connection = connection
+if (process.env.NODE_ENV !== "production") {
+  globalForDb.connection = connection;
 }
 
-export const db = drizzle(connection, { schema })
+export const db = drizzle(connection, { schema });

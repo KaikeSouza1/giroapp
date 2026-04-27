@@ -1,35 +1,43 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db/remote/client'
-import { checkins, routeSessions, userBadges, badges, users } from '@/lib/db/remote/schema'
-import { createClient } from '@/lib/supabase/client'
-import { eq, and } from 'drizzle-orm'
-import { v4 as uuidv4 } from 'uuid'
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/db/remote/client";
+import {
+  checkins,
+  routeSessions,
+  userBadges,
+  badges,
+  users,
+} from "@/lib/db/remote/schema";
+import { createClient } from "@/lib/supabase/client";
+import { eq, and } from "drizzle-orm";
+import { v4 as uuidv4 } from "uuid";
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = await createClient()
-    
-    
-    const authHeader = req.headers.get('Authorization')
-    const token = authHeader?.replace('Bearer ', '')
+    const supabase = await createClient();
 
-    const { data: { user }, error: authError } = token
+    const authHeader = req.headers.get("Authorization");
+    const token = authHeader?.replace("Bearer ", "");
+
+    const {
+      data: { user },
+      error: authError,
+    } = token
       ? await supabase.auth.getUser(token)
-      : await supabase.auth.getUser()
+      : await supabase.auth.getUser();
 
-    if (!user || authError) throw new Error("Não autenticado")
+    if (!user || authError) throw new Error("Não autenticado");
 
     // Precisamos do ID interno do nosso banco, não o do Supabase Auth
     const [dbUser] = await db
       .select()
       .from(users)
       .where(eq(users.supabaseAuthId, user.id))
-      .limit(1)
+      .limit(1);
 
-    if (!dbUser) throw new Error("Usuário não encontrado no banco de dados.")
+    if (!dbUser) throw new Error("Usuário não encontrado no banco de dados.");
 
-    const body = await req.json()
-    const newSessionId = uuidv4() // Gera um ID válido para o banco
+    const body = await req.json();
+    const newSessionId = uuidv4(); // Gera um ID válido para o banco
 
     // 1. Salva a Sessão da Rota como "Concluída" usando o ID do usuário no NOSSO BANCO
     await db.insert(routeSessions).values({
@@ -37,54 +45,57 @@ export async function POST(req: NextRequest) {
       localId: uuidv4(),
       userId: dbUser.id, // <-- CORREÇÃO: Usando dbUser.id em vez de user.id (Auth)
       routeId: body.routeId,
-      status: 'concluido',
-      startedAt: new Date(Date.now() - (body.elapsedSecs * 1000)),
+      status: "concluido",
+      startedAt: new Date(Date.now() - body.elapsedSecs * 1000),
       completedAt: new Date(),
-      totalDistanceKm: body.distanceKm?.toString() || '0'
-    })
+      totalDistanceKm: body.distanceKm?.toString() || "0",
+    });
 
-    
     for (const c of body.checkins) {
       await db.insert(checkins).values({
         localId: uuidv4(),
-        userId: dbUser.id, 
+        userId: dbUser.id,
         waypointId: c.waypointId,
-        routeSessionId: newSessionId, 
+        routeSessionId: newSessionId,
         capturedLatitude: c.lat.toString(),
         capturedLongitude: c.lng.toString(),
         distanceFromWaypointMeters: c.distance.toString(),
-        selfieImagePath: c.photoUrl, 
+        selfieImagePath: c.photoUrl,
         capturedAtOffline: new Date(),
-        syncedAt: new Date()
-      })
+        syncedAt: new Date(),
+      });
     }
 
-    
-    const routeBadges = await db.select().from(badges).where(eq(badges.routeId, body.routeId))
-    
+    const routeBadges = await db
+      .select()
+      .from(badges)
+      .where(eq(badges.routeId, body.routeId));
+
     if (routeBadges.length > 0) {
-      const badgeToGive = routeBadges[0]
-      
-      const existingUserBadge = await db.select().from(userBadges)
+      const badgeToGive = routeBadges[0];
+
+      const existingUserBadge = await db
+        .select()
+        .from(userBadges)
         .where(
           and(
-            eq(userBadges.userId, dbUser.id), 
+            eq(userBadges.userId, dbUser.id),
             eq(userBadges.badgeId, badgeToGive.id)
           )
-        )
+        );
 
       if (existingUserBadge.length === 0) {
         await db.insert(userBadges).values({
-          userId: dbUser.id, 
+          userId: dbUser.id,
           badgeId: badgeToGive.id,
-          routeSessionId: newSessionId
-        })
+          routeSessionId: newSessionId,
+        });
       }
     }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true });
   } catch (err: any) {
-    console.error("Erro no complete-route:", err)
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    console.error("Erro no complete-route:", err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

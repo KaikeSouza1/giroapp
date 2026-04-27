@@ -1,13 +1,13 @@
-
-import CheckinClient from './CheckinClient'
-
-
-
+import CheckinClient from "./CheckinClient";
 
 export function generateStaticParams() {
-  return []
+  return [];
 }
 
-export default function CheckinPage({ params }: { params: Promise<{ id: string }> }) {
-  return <CheckinClient params={params} />
+export default function CheckinPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  return <CheckinClient params={params} />;
 }

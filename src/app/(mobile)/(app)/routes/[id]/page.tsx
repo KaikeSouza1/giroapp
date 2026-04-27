@@ -1,10 +1,9 @@
-
-import RouteClient from './RouteClient'
+import RouteClient from "./RouteClient";
 
 export function generateStaticParams() {
-  return [] 
+  return [];
 }
 
 export default function Page({ params }: { params: Promise<{ id: string }> }) {
-  return <RouteClient params={params} />
+  return <RouteClient params={params} />;
 }

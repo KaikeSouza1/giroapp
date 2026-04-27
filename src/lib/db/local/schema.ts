@@ -1,6 +1,3 @@
-
-
-
 export const LOCAL_SCHEMA_SQL = `
   -- Dados das rotas baixados do servidor (cache)
   CREATE TABLE IF NOT EXISTS local_routes (
@@ -64,4 +61,4 @@ export const LOCAL_SCHEMA_SQL = `
     FOREIGN KEY (session_id) REFERENCES local_sessions(id),
     FOREIGN KEY (waypoint_id) REFERENCES local_waypoints(id)
   );
-`
+`;
