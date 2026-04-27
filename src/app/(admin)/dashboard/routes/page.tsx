@@ -16,21 +16,29 @@ type Route = {
 }
 
 const difficultyLabel: Record<string, string> = {
-  easy: 'Fácil', medium: 'Médio', hard: 'Difícil', extreme: 'Extremo'
+  easy: 'Fácil', medium: 'Médio', hard: 'Difícil', extreme: 'Extremo',
+  facil: 'Fácil', medio: 'Médio', dificil: 'Difícil', extremo: 'Extremo'
 }
 
 const difficultyColor: Record<string, string> = {
-  easy: '#22c55e', medium: '#f59e0b', hard: '#ef4444', extreme: '#7c3aed'
+  easy: '#22c55e', medium: '#f59e0b', hard: '#ef4444', extreme: '#7c3aed',
+  facil: '#22c55e', medio: '#f59e0b', dificil: '#ef4444', extremo: '#7c3aed'
 }
 
+// 🔥 Mapeamento blindado para aceitar o legado mas focar no "published"
 const statusLabel: Record<string, string> = {
-  draft: 'Rascunho', published: 'Publicada', archived: 'Arquivada'
+  draft: 'Rascunho', rascunho: 'Rascunho', 
+  published: 'Publicada', publicado: 'Publicada', 
+  archived: 'Arquivada', arquivado: 'Arquivada'
 }
 
 const statusColor: Record<string, { bg: string; text: string }> = {
   draft: { bg: '#F3F4F6', text: '#6B7280' },
+  rascunho: { bg: '#F3F4F6', text: '#6B7280' },
   published: { bg: '#DCFCE7', text: '#16A34A' },
+  publicado: { bg: '#DCFCE7', text: '#16A34A' },
   archived: { bg: '#FEF9C3', text: '#CA8A04' },
+  arquivado: { bg: '#FEF9C3', text: '#CA8A04' },
 }
 
 export default function RoutesPage() {
@@ -39,20 +47,16 @@ export default function RoutesPage() {
   const [userRole, setUserRole] = useState<string>('')
 
   useEffect(() => {
-    // Busca a role do usuário para saber se mostramos a coluna de Organização
     fetch('/api/users/me').then(r => r.json()).then(data => setUserRole(data?.role || ''))
 
     fetch('/api/admin/routes')
       .then(async (r) => {
         const data = await r.json()
-        
-        // Se a API não der sucesso ou se a resposta não for um Array (Lista), a gente previne o erro
         if (!r.ok || !Array.isArray(data)) {
           console.error("Erro vindo da API de rotas:", data)
-          setRoutes([]) // Garante que a tela não vai quebrar
+          setRoutes([]) 
           return
         }
-        
         setRoutes(data)
       })
       .catch((err) => {
@@ -64,13 +68,38 @@ export default function RoutesPage() {
       })
   }, [])
 
+  // 🔥 ATUALIZA O STATUS DIRETO DA TABELA (Ex: para 'published' ou 'archived')
   async function updateStatus(id: string, status: string) {
-    await fetch(`/api/admin/routes/${id}/status`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    })
-    setRoutes(prev => prev.map(r => r.id === id ? { ...r, status } : r))
+    try {
+      const res = await fetch(`/api/admin/routes/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+      if (res.ok) {
+        setRoutes(prev => prev.map(r => r.id === id ? { ...r, status } : r))
+      }
+    } catch (error) {
+      alert("Erro ao tentar atualizar o status da rota.")
+    }
+  }
+
+  // 🔥 EXCLUIR ROTA COM VALIDAÇÃO
+  async function handleDelete(id: string) {
+    const confirmDelete = window.confirm("Tem certeza que deseja excluir esta rota permanentemente? Isso só funcionará se ninguém tiver percorrido ela ainda. Caso contrário, apenas a arquive.")
+    if (!confirmDelete) return
+
+    try {
+      const res = await fetch(`/api/admin/routes/${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setRoutes(prev => prev.filter(r => r.id !== id))
+      } else {
+        const data = await res.json()
+        alert(data.error || 'Erro ao tentar excluir a rota. Considere usar a opção "Arquivar".')
+      }
+    } catch (e) {
+      alert('Erro de conexão ao excluir.')
+    }
   }
 
   return (
@@ -139,8 +168,8 @@ export default function RoutesPage() {
                     <td className="px-6 py-4">
                       <span className="text-xs font-bold px-2.5 py-1 rounded-full"
                         style={{
-                          background: `${difficultyColor[route.difficulty]}20`,
-                          color: difficultyColor[route.difficulty]
+                          background: `${difficultyColor[route.difficulty] || '#e5e7eb'}20`,
+                          color: difficultyColor[route.difficulty] || '#6b7280'
                         }}>
                         {difficultyLabel[route.difficulty] ?? route.difficulty}
                       </span>
@@ -149,38 +178,51 @@ export default function RoutesPage() {
                       {route.distanceKm ? `${route.distanceKm} km` : '—'}
                     </td>
                     <td className="px-6 py-4">
-  <span className="text-xs font-bold px-2.5 py-1 rounded-full"
-    style={{ 
-      backgroundColor: (statusColor[route.status] || { bg: '#F3F4F6' }).bg, 
-      color: (statusColor[route.status] || { text: '#6B7280' }).text 
-    }}>
-    {statusLabel[route.status] ?? route.status}
-  </span>
-</td>
+                      <span className="text-xs font-bold px-2.5 py-1 rounded-full"
+                        style={{ 
+                          backgroundColor: (statusColor[route.status] || { bg: '#F3F4F6' }).bg, 
+                          color: (statusColor[route.status] || { text: '#6B7280' }).text 
+                        }}>
+                        {statusLabel[route.status] ?? route.status}
+                      </span>
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-2">
-                        {route.status === 'rascunho' && (
+                        
+                        {/* Se não for publicada, dá a opção de publicar */}
+                        {route.status !== 'published' && (
                           <button
                             onClick={() => updateStatus(route.id, 'published')}
-                            className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all"
+                            className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all hover:opacity-80"
                             style={{ background: '#DCFCE7', color: '#16A34A' }}>
                             Publicar
                           </button>
                         )}
+
+                        {/* Se estiver publicada, dá a opção de arquivar */}
                         {route.status === 'published' && (
                           <button
                             onClick={() => updateStatus(route.id, 'archived')}
-                            className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all"
+                            className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all hover:opacity-80"
                             style={{ background: '#FEF9C3', color: '#CA8A04' }}>
                             Arquivar
                           </button>
                         )}
+
                         <Link
                           href={`/dashboard/routes/${route.id}/edit`}
-                          className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all"
+                          className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all hover:opacity-80"
                           style={{ background: '#F3F4F6', color: '#6B7280' }}>
                           Editar
                         </Link>
+
+                        {/* Botão de excluir */}
+                        <button
+                          onClick={() => handleDelete(route.id)}
+                          className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all border border-transparent hover:border-red-200"
+                          style={{ background: '#FEF2F2', color: '#DC2626' }}>
+                          Excluir
+                        </button>
                       </div>
                     </td>
                   </tr>
