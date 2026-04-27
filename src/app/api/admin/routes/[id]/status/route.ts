@@ -1,4 +1,4 @@
-// src/app/api/admin/routes/[id]/route.ts
+
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
@@ -57,7 +57,7 @@ export async function PUT(
         distanceKm: routeData.distanceKm ? routeData.distanceKm.toString() : null,
         estimatedMinutes: routeData.estimatedMinutes ? parseInt(routeData.estimatedMinutes) : null,
         organizationId: routeData.organizationId || null,
-        status: routeData.status || 'publicado', // 🔥 Corrigido aqui
+        status: routeData.status || 'publicado', 
       })
       .where(eq(routes.id, id))
 

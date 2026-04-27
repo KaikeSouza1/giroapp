@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js' // Mudamos para o client normal para poder injetar o Token
+import { createClient } from '@supabase/supabase-js' 
 import { db } from '@/lib/db/remote/client'
 import { routeSessions, users } from '@/lib/db/remote/schema'
 import { eq } from 'drizzle-orm'
@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
     
-    // 1. Pega o Token do cabeçalho (Funciona perfeito no app Mobile)
+    
     const authHeader = request.headers.get('Authorization')
     const token = authHeader?.replace('Bearer ', '')
 
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Usuário não encontrado no banco de dados' }, { status: 404 })
     }
 
-    // 4. Fazer o Upload da Imagem para o Supabase Storage (se tiver)
+    
     let finalImageUrl = null
 
     if (body.socialImageBase64) {
@@ -65,7 +65,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // 5. Salvar a sessão completa na nossa tabela do Drizzle
+    
     const [novaSessao] = await db.insert(routeSessions).values({
       localId: uuidv4(),
       userId: dbUser.id,
@@ -73,14 +73,14 @@ export async function POST(request: Request) {
       status: 'concluido',
       startedAt: new Date(body.startedAt),
       completedAt: new Date(body.completedAt),
-      totalDistanceKm: body.totalDistanceKm, // Já vem formatado
+      totalDistanceKm: body.totalDistanceKm, 
       durationSeconds: body.durationSeconds,
       averagePace: body.averagePace,
       pathCoordinates: body.pathCoordinates,
       socialImageUrl: finalImageUrl,
-    }).returning() // Retorna a linha salva para pegarmos o ID
+    }).returning() 
 
-    // Devolvemos o ID para a tela de Resumo saber qual treino foi salvo
+    
     return NextResponse.json({ success: true, id: novaSessao.id })
 
   } catch (error) {

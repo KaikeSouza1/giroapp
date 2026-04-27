@@ -15,7 +15,7 @@ export default function SummaryClient() {
   const store = useActivityStore()
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
-  const isInitRef = useRef(false) // Trava para evitar que o mapa renderize duas vezes e quebre
+  const isInitRef = useRef(false) 
   
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -59,7 +59,7 @@ export default function SummaryClient() {
 
   async function initMap() {
     if (!mapContainerRef.current || mapRef.current) return
-    // Evita o crash "Map container is already initialized" do Leaflet
+    
     if ((mapContainerRef.current as any)._leaflet_id) return 
 
     const L = (await import('leaflet')).default
@@ -79,7 +79,7 @@ export default function SummaryClient() {
         lineJoin: 'round',
       }).addTo(map)
 
-      // Start dot
+      
       const startIcon = L.divIcon({
         html: `<div style="width:14px;height:14px;border-radius:50%;background:#22C55E;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>`,
         className: '', iconSize: [14, 14], iconAnchor: [7, 7],
@@ -119,7 +119,7 @@ export default function SummaryClient() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error('Não autenticado')
 
-      // 🚀 TIMEOUT RESTRITO DE 8 SEGUNDOS
+      
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 8000)
 
@@ -139,7 +139,7 @@ export default function SummaryClient() {
             totalDistanceKm: distanceKm.toFixed(4),
             averagePace: formatPace(avgPaceSec),
             pathCoordinates: coordinates.map((c) => ({ lat: c.lat, lng: c.lng, ts: c.timestamp })),
-            // A imagem só vai ser enviada na próxima tela (Share)
+            
           }),
         })
         clearTimeout(timeoutId)
@@ -151,7 +151,7 @@ export default function SummaryClient() {
         
         const data = await res.json()
         
-        // Guarda o ID que o banco gerou no Zustand para a tela de Share poder atualizar a foto
+        
         if (data.id) {
            store.setLastSavedActivityId(data.id)
         }
@@ -160,7 +160,7 @@ export default function SummaryClient() {
         
         if (fetchErr.name === 'AbortError') {
           console.warn('Timeout offline alcançado no salvamento principal. Ignorando e seguindo.')
-          // Ignoramos a falha para permitir que o usuário continue o fluxo da tela no modo Offline
+          
         } else {
           throw fetchErr
         }
@@ -185,7 +185,7 @@ export default function SummaryClient() {
       className="min-h-screen flex flex-col font-[family-name:var(--font-dm)]"
       style={{ background: '#080808' }}
     >
-      {/* Header */}
+      {}
       <div className="relative overflow-hidden px-5 pt-12 pb-6">
         <div
           className="absolute inset-0"
@@ -207,14 +207,14 @@ export default function SummaryClient() {
         <p className="relative text-white/40 text-sm font-semibold mt-1">{meta.label}</p>
       </div>
 
-      {/* Map */}
+      {}
       <div className="mx-5 rounded-3xl overflow-hidden relative" style={{ height: 220 }}>
-        {/* Placeholder escuro para evitar flicker antes do mapa aparecer */}
+        {}
         <div className="absolute inset-0 bg-[#111]" />
         <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
       </div>
 
-      {/* Stats grid */}
+      {}
       <div className="grid grid-cols-2 gap-3 px-5 mt-4">
         {[
           { label: 'Distância', value: `${distanceKm.toFixed(2)} km`, icon: '📏' },
@@ -240,7 +240,7 @@ export default function SummaryClient() {
         </div>
       )}
 
-      {/* Actions */}
+      {}
       <div className="px-5 mt-6 pb-12 flex flex-col gap-3">
         <button
           onClick={handleSave}

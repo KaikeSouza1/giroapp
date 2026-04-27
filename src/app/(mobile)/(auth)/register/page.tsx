@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import NextImage from 'next/image'
 import { createBrowserClient } from '@supabase/ssr'
-import { uploadImageToBucket } from '@/lib/supabase/storage' // Importando a sua função!
+import { uploadImageToBucket } from '@/lib/supabase/storage' 
 
-// Converte Base64 para um objeto File nativo (Mais estável para Web e Capacitor)
+
 function dataUrlToFile(dataUrl: string, filename: string): File {
   const arr = dataUrl.split(',')
   const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg'
@@ -96,7 +96,7 @@ export default function RegisterPage() {
     if (!photoDataUrl) return
     setStep('uploading')
 
-    // 1. Cria o usuário no Auth do Supabase
+    
     const { data, error: authError } = await supabase.auth.signUp({
       email: form.email,
       password: form.password,
@@ -113,10 +113,10 @@ export default function RegisterPage() {
 
     await supabase.auth.signInWithPassword({ email: form.email, password: form.password })
 
-    // 2. Converte a foto em um objeto File
+    
     const file = dataUrlToFile(photoDataUrl, 'reference.jpg')
 
-    // 3. Faz o upload usando a sua função pronta!
+    
     let publicUrl = ''
     try {
       // Salva no bucket giro-app, pasta selfies/{userId}
@@ -127,7 +127,7 @@ export default function RegisterPage() {
       return
     }
 
-    // 4. Cria o registro na tabela de usuários (banco de dados)
+    
     await fetch('/api/users/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -139,13 +139,13 @@ export default function RegisterPage() {
       }),
     })
 
-    // 5. Salva a foto de referência (Selfie) na tabela de usuários
+    
     await fetch('/api/users/update-selfie', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         supabaseAuthId: data.user.id,
-        selfiePath: publicUrl, // Mandamos a URL pública salva no storage
+        selfiePath: publicUrl, 
       }),
     })
 
@@ -204,7 +204,7 @@ export default function RegisterPage() {
             style={{ height: '240px', background: '#F5F5F5', border: '2px solid #EFEFEF' }}
           >
             {photoDataUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
+              
               <img src={photoDataUrl} alt="Foto de referência" className="w-full h-full object-cover" />
             ) : (
               <div className="flex flex-col items-center gap-3 text-center px-6">

@@ -28,7 +28,7 @@ export default function ActivitySetupPage() {
       className="min-h-screen flex flex-col font-[family-name:var(--font-dm)]"
       style={{ background: '#0A0A0A' }}
     >
-      {/* Glow hero */}
+      {}
       <div className="relative overflow-hidden px-6 pt-14 pb-10">
         <div
           className="absolute inset-0 pointer-events-none"
@@ -56,7 +56,7 @@ export default function ActivitySetupPage() {
         </h1>
       </div>
 
-      {/* Type selector */}
+      {}
       <div className="flex-1 px-5 flex flex-col gap-3">
         {TYPES.map((a) => {
           const active = activityType === a.type
@@ -111,7 +111,7 @@ export default function ActivitySetupPage() {
         })}
       </div>
 
-      {/* CTA */}
+      {}
       <div className="px-5 pb-12 pt-6">
         <button
           onClick={handleStart}

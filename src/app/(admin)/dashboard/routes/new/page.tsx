@@ -19,7 +19,7 @@ type Waypoint = {
 
 type Organization = { id: string; name: string }
 
-// ── Decodificador de Polyline (formato Google / OSRM) ──────────────────────
+
 function decodePolyline(str: string, precision = 5): [number, number][] {
   let index = 0
   let lat = 0
@@ -54,8 +54,8 @@ function decodePolyline(str: string, precision = 5): [number, number][] {
   return coordinates
 }
 
-// ── CORREÇÃO: Config por tipo de rota (Perfis oficiais do OSRM) ────────────
-// O servidor público router.project-osrm.org suporta 'foot', 'bike' e 'driving'.
+
+
 const routeConfig: Record<string, { osrmProfile: string; speedKmh: number; label: string }> = {
   caminhada:   { osrmProfile: 'foot',    speedKmh: 5,   label: 'a pé' },
   cicloturismo:{ osrmProfile: 'bike',    speedKmh: 15,  label: 'de bike' },
@@ -116,7 +116,7 @@ export default function NewRoutePage() {
     fetchSessionData()
   }, [])
 
-  // ── Inicialização do Mapa ─────────────────────────────────────────────
+  
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return
 
@@ -167,7 +167,7 @@ export default function NewRoutePage() {
     initMap()
   }, [])
 
-  // ── Atualiza marcadores ───────────────────────────────────────────────
+  
   useEffect(() => {
     if (!mapRef.current || !mapReady) return
 
@@ -215,7 +215,7 @@ export default function NewRoutePage() {
         const config = routeConfig[type] || routeConfig['caminhada']
         const coords = wps.map((wp) => `${wp.longitude},${wp.latitude}`).join(';')
         
-        // URL Corrigida: Usando router.project-osrm.org e mudando apenas o profile (foot/bike/driving)
+        
         const url = `https://router.project-osrm.org/route/v1/${config.osrmProfile}/${coords}?overview=full&geometries=polyline`
 
         const res = await fetch(url)
@@ -448,7 +448,7 @@ export default function NewRoutePage() {
       <Sidebar />
       <main className="flex-1 flex flex-col">
 
-        {/* Topbar */}
+        {}
         <div className="flex items-center justify-between px-8 py-5 bg-white border-b border-gray-100 shadow-sm z-10 relative">
           <div>
             <h1 className="text-xl font-black text-gray-900">Nova Rota</h1>
@@ -480,9 +480,9 @@ export default function NewRoutePage() {
         </div>
 
         <div className="flex flex-1 overflow-hidden relative">
-          {/* Painel lateral */}
+          {}
           <div className="w-[420px] bg-white border-r border-gray-100 flex flex-col overflow-hidden shadow-2xl z-20">
-            {/* Tabs */}
+            {}
             <div className="flex border-b border-gray-100">
               {(['info', 'waypoints'] as const).map((tab) => (
                 <button
@@ -501,7 +501,7 @@ export default function NewRoutePage() {
 
             <div className="flex-1 overflow-y-auto p-5">
 
-              {/* ABA: INFORMAÇÕES */}
+              {}
               {activeTab === 'info' && (
                 <div className="flex flex-col gap-4">
                   {error && (
@@ -551,7 +551,7 @@ export default function NewRoutePage() {
                     />
                   </div>
 
-                  {/* FOTO DE CAPA */}
+                  {}
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Imagem de Capa</label>
                     {!previewUrl ? (
@@ -721,7 +721,7 @@ export default function NewRoutePage() {
                 </div>
               )}
 
-              {/* ABA: WAYPOINTS */}
+              {}
               {activeTab === 'waypoints' && (
                 <div className="flex flex-col gap-4">
                   <div className="bg-orange-50/50 p-3 rounded-2xl border border-orange-100">

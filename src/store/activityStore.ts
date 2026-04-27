@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 
-// ─── TIPOS TRADUZIDOS PARA BATER COM O BANCO DE DADOS ───
+
 export type ActivityType = 'corrida' | 'cicloturismo' | 'caminhada'
 export type ActivityStatus = 'idle' | 'running' | 'pausado' | 'stopped'
 
@@ -103,12 +103,12 @@ export const useActivityStore = create<ActivityStore>()(
       })
     },
 
-    // ── MODO STRAVA: NOVA LÓGICA DE GPS DE ALTA PRECISÃO ──
+    
     addCoordinate: (coord) => {
       const { status, coordinates, distanceKm, activityType } = get()
       if (status !== 'running') return
 
-      // Se é o primeiro ponto absoluto, só adicionamos
+      
       if (coordinates.length === 0) {
         set({ coordinates: [coord] })
         return
@@ -117,18 +117,18 @@ export const useActivityStore = create<ActivityStore>()(
       const lastSaved = coordinates[coordinates.length - 1]
       const distKm = haversineKm(lastSaved, coord)
 
-      // 1. FILTRO DE TREMOR (JITTER): Só grava ponto se moveu mais de 4 metros (0.004 km).
+      
       if (distKm < 0.004) {
-        const timeSinceLast = (coord.timestamp - lastSaved.timestamp) / 1000 // segundos
-        // Se ficou 6 segundos num raio menor que 4 metros, você está parado. Zera a velocidade.
+        const timeSinceLast = (coord.timestamp - lastSaved.timestamp) / 1000 
+        
         if (timeSinceLast > 6) {
           set({ currentSpeedKmH: 0, currentPaceSecPerKm: 0 })
         }
-        // IMPORTANTE: Dá "return" vazio para ignorar este ponto e o erro acumular para o próximo!
+        
         return
       }
 
-      // 2. MOVEU DE VERDADE: Calcula a velocidade e adiciona no histórico
+      
       const timeDiffHr = (coord.timestamp - lastSaved.timestamp) / 3_600_000
       let speedKmH = 0
       let paceSecPerKm = 0
@@ -137,7 +137,7 @@ export const useActivityStore = create<ActivityStore>()(
         speedKmH = distKm / timeDiffHr
       }
 
-      // 3. FILTRO ANTI-TELEPORTE: Se a velocidade for irreal para o esporte, é sinal pulando do GPS. Ignoramos.
+      
       const maxSpeed = activityType === 'cicloturismo' ? 100 : 35
       if (speedKmH > maxSpeed) {
         return 
@@ -145,7 +145,7 @@ export const useActivityStore = create<ActivityStore>()(
 
       paceSecPerKm = speedKmH > 0 ? 3600 / speedKmH : 0
 
-      // Só agora salva a distância, pq sabemos que foi um trajeto real e válido
+      
       set({
         coordinates: [...coordinates, coord],
         distanceKm: distanceKm + distKm,
@@ -173,7 +173,7 @@ export const useActivityStore = create<ActivityStore>()(
   }))
 )
 
-// ── Helpers exportados ─────────────────────────────────────────────────────
+
 
 export function formatPace(secPerKm: number): string {
   if (!secPerKm || !isFinite(secPerKm) || secPerKm <= 0) return '--:--'

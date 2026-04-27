@@ -1,4 +1,4 @@
-// src/app/api/sessions/[id]/complete/route.ts
+
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
@@ -19,11 +19,11 @@ export async function PATCH(
 
     const { totalDistanceKm } = await request.json()
 
-    // 1. Busca a sessão atual para saber de qual usuário estamos falando
+    
     const [currentSession] = await db.select().from(routeSessions).where(eq(routeSessions.id, sessionId)).limit(1)
     if (!currentSession) return NextResponse.json({ error: 'Sessão não encontrada' }, { status: 404 })
 
-    // 2. Atualiza a sessão para Concluída
+    
     await db.update(routeSessions)
       .set({
         status: 'concluido',
@@ -32,16 +32,16 @@ export async function PATCH(
       })
       .where(eq(routeSessions.id, sessionId))
 
-    // ─── LÓGICA DE GAMIFICAÇÃO (INSÍGNIAS AUTOMÁTICAS) ────────────────────────
     
-    // Conta quantas rotas concluídas esse usuário tem agora
+    
+    
     const [completedRes] = await db.select({ count: sql<number>`count(*)` })
       .from(routeSessions)
       .where(and(eq(routeSessions.userId, currentSession.userId), eq(routeSessions.status, 'concluido')))
       
     const totalCompleted = Number(completedRes?.count || 0)
 
-    // Configuração das metas e prêmios (Usando API de avatares estilo Glass/3D provisórios e bonitos)
+    
     let badgeAward = null
 
     if (totalCompleted === 1) {
@@ -64,12 +64,12 @@ export async function PATCH(
       }
     }
 
-    // Se o usuário atingiu a meta, damos a insígnia
+    
     if (badgeAward) {
-      // Verifica se a insígnia já existe no banco de dados geral
+      
       let [badgeObj] = await db.select().from(badges).where(eq(badges.name, badgeAward.name)).limit(1)
       
-      // Se não existir, a API cria a insígnia na hora (Self-healing)
+      
       if (!badgeObj) {
         [badgeObj] = await db.insert(badges).values({
           name: badgeAward.name,
@@ -79,11 +79,11 @@ export async function PATCH(
         }).returning()
       }
 
-      // Verifica se o usuário já tem essa insígnia (para evitar duplicidade)
+      
       const [alreadyHas] = await db.select().from(userBadges)
         .where(and(eq(userBadges.userId, currentSession.userId), eq(userBadges.badgeId, badgeObj.id))).limit(1)
 
-      // Se não tiver, entrega o prêmio!
+      
       if (!alreadyHas) {
         await db.insert(userBadges).values({
           userId: currentSession.userId,

@@ -1,11 +1,11 @@
-// src/app/api/admin/organizations/[id]/route.ts
+
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
 import { organizations, users } from '@/lib/db/remote/schema'
 import { eq } from 'drizzle-orm'
 
-// Função auxiliar para verificar se é superadmin
+
 async function checkSuperAdmin() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -15,10 +15,10 @@ async function checkSuperAdmin() {
   return dbUser?.role === 'superadmin'
 }
 
-// EDITAR (PATCH)
+
 export async function PATCH(
   request: NextRequest, 
-  context: { params: Promise<{ id: string }> } // Corrigido para o padrão assíncrono do Next 15
+  context: { params: Promise<{ id: string }> } 
 ) {
   try {
     const isSuperAdmin = await checkSuperAdmin()
@@ -43,10 +43,10 @@ export async function PATCH(
   }
 }
 
-// EXCLUIR (DELETE)
+
 export async function DELETE(
   request: NextRequest, 
-  context: { params: Promise<{ id: string }> } // Corrigido para o padrão assíncrono do Next 15
+  context: { params: Promise<{ id: string }> } 
 ) {
   try {
     const isSuperAdmin = await checkSuperAdmin()
@@ -55,7 +55,7 @@ export async function DELETE(
     const resolvedParams = await context.params
     const id = resolvedParams.id
 
-    // O Drizzle vai deletar em cascata as rotas vinculadas
+    
     await db.delete(organizations).where(eq(organizations.id, id))
 
     return NextResponse.json({ success: true })

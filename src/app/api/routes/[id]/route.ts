@@ -1,4 +1,4 @@
-// src/app/api/routes/[id]/route.ts
+
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db/remote/client'
 import { routes, waypoints, organizations } from '@/lib/db/remote/schema'
@@ -9,7 +9,7 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    // No Next.js 15, os parâmetros devem ser aguardados (await)
+    
     const resolvedParams = await context.params
     const routeId = resolvedParams.id
 

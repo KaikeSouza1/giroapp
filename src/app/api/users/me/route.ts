@@ -13,7 +13,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
-    // 1. Busca os dados básicos do usuário
+    
     const [dbUser] = await db.select().from(users)
       .where(eq(users.supabaseAuthId, authUser.id)).limit(1)
 
@@ -21,24 +21,24 @@ export async function GET() {
       return NextResponse.json({ error: 'Utilizador não encontrado' }, { status: 404 })
     }
 
-    // 2. Calcula as métricas reais para a Home
     
-    // Contagem de rotas concluídas (status 'concluido')
+    
+    
     const [completedRes] = await db.select({ count: sql<number>`count(*)` })
       .from(routeSessions)
       .where(and(eq(routeSessions.userId, dbUser.id), eq(routeSessions.status, 'concluido')))
 
-    // Contagem de insígnias conquistadas
+    
     const [badgesRes] = await db.select({ count: sql<number>`count(*)` })
       .from(userBadges)
       .where(eq(userBadges.userId, dbUser.id))
 
-    // Contagem de fotos tiradas (cada check-in concluído gera uma foto de selfie)
+    
     const [photosRes] = await db.select({ count: sql<number>`count(*)` })
       .from(checkins)
       .where(eq(checkins.userId, dbUser.id))
 
-    // Retorna o usuário com os novos campos de estatísticas
+    
     return NextResponse.json({
       ...dbUser,
       routesCompleted: Number(completedRes?.count || 0),

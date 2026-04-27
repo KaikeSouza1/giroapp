@@ -1,11 +1,11 @@
 'use client'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// src/components/mobile/RouteCard.tsx
-//
-// Componente reutilizável de card de rota para o app mobile.
-// Usado em: home/page.tsx, routes listing, feed.
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
 
 import Link from 'next/link'
 
@@ -69,7 +69,7 @@ export default function RouteCard({
         className="bg-white rounded-3xl overflow-hidden transition-all active:scale-[0.98]"
         style={{ border: '1.5px solid #F0F0F0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}
       >
-        {/* ── FOTO DE CAPA ──────────────────────────────────── */}
+        {}
         <div className="relative w-full overflow-hidden" style={{ height: '180px' }}>
           {coverImageUrl ? (
             <img
@@ -79,7 +79,7 @@ export default function RouteCard({
               style={{ display: 'block' }}
             />
           ) : (
-            /* Placeholder quando não há foto */
+            
             <div
               className="w-full h-full flex flex-col items-center justify-center gap-2"
               style={{
@@ -93,7 +93,7 @@ export default function RouteCard({
             </div>
           )}
 
-          {/* Gradiente suave na base da imagem para legibilidade */}
+          {}
           {coverImageUrl && (
             <div
               className="absolute inset-0"
@@ -104,7 +104,7 @@ export default function RouteCard({
             />
           )}
 
-          {/* Badge de dificuldade — canto superior esquerdo */}
+          {}
           <div
             className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-black"
             style={{
@@ -121,7 +121,7 @@ export default function RouteCard({
             {difficultyLabel[difficulty] ?? difficulty}
           </div>
 
-          {/* Badge da organização — canto superior direito */}
+          {}
           {organizationName && (
             <div
               className="absolute top-3 right-3 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider"
@@ -135,7 +135,7 @@ export default function RouteCard({
             </div>
           )}
 
-          {/* Nome da rota sobre a foto (apenas quando tem imagem) */}
+          {}
           {coverImageUrl && (
             <div className="absolute bottom-3 left-4 right-4">
               <p
@@ -151,9 +151,9 @@ export default function RouteCard({
           )}
         </div>
 
-        {/* ── INFORMAÇÕES ABAIXO DA FOTO ────────────────────── */}
+        {}
         <div className="px-4 pt-3 pb-4">
-          {/* Título (quando NÃO tem foto — já aparece sobre a imagem quando tem) */}
+          {}
           {!coverImageUrl && (
             <>
               <div className="flex items-center gap-1.5 mb-1">
@@ -167,14 +167,14 @@ export default function RouteCard({
             </>
           )}
 
-          {/* Descrição */}
+          {}
           {description && (
             <p className="text-gray-400 text-xs leading-relaxed line-clamp-2 mb-3">
               {description}
             </p>
           )}
 
-          {/* Stats + botão */}
+          {}
           <div className="flex items-center gap-3 mt-1">
             {distanceKm && (
               <div className="flex items-center gap-1">
@@ -212,7 +212,7 @@ export default function RouteCard({
               </div>
             )}
 
-            {/* Botão Iniciar — empurrado para a direita */}
+            {}
             <div className="ml-auto">
               <div
                 className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-black text-white"

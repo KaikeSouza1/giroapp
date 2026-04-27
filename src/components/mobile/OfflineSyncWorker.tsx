@@ -13,16 +13,16 @@ export default function OfflineSyncWorker() {
   )
 
   useEffect(() => {
-    // 1. Checa a cada 10 segundos se a internet voltou e se tem algo na gaveta
+    
     const interval = setInterval(() => {
       checkAndSync()
     }, 10000)
 
-    // E roda uma vez logo que abre o app
+    
     checkAndSync()
 
     return () => clearInterval(interval)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  
   }, [])
 
   async function checkAndSync() {
@@ -31,16 +31,16 @@ export default function OfflineSyncWorker() {
     try {
       const { Network } = await import('@capacitor/network')
       const status = await Network.getStatus()
-      if (!status.connected) return // Se não tem internet, volta a dormir 😴
+      if (!status.connected) return 
 
-      // 2. Abre a gaveta
+      
       const pendingRaw = localStorage.getItem('giro_pending_routes')
       if (!pendingRaw) return
       
       const pendingRoutes = JSON.parse(pendingRaw)
       if (pendingRoutes.length === 0) return
 
-      // Tem trabalho a fazer! Acorda o robô 🤖⚡
+      
       setIsSyncing(true)
       setSyncStatus('syncing')
 
@@ -50,14 +50,14 @@ export default function OfflineSyncWorker() {
         return
       }
 
-      // 3. Processa cada trilha pendente
-      const routesToKeep = [] // Se der erro em alguma, a gente não apaga
+      
+      const routesToKeep = [] 
 
       for (const route of pendingRoutes) {
         try {
           const finalCheckins = []
 
-          // Sobe as fotos
+          
           for (const c of route.checkins) {
             const resBlob = await fetch(c.photoUrl)
             const blob = await resBlob.blob()
@@ -80,7 +80,7 @@ export default function OfflineSyncWorker() {
             })
           }
 
-          // Salva no banco de dados
+          
           const res = await fetch('/api/sync/complete-route', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -94,19 +94,19 @@ export default function OfflineSyncWorker() {
 
           if (!res.ok) throw new Error('Erro na API')
 
-          // Sincronizou com sucesso! (Não coloca no routesToKeep, ou seja, vai ser apagado da gaveta)
+          
         } catch (err) {
           console.error('Falha ao sincronizar rota:', err)
-          routesToKeep.push(route) // Se deu ruim, guarda de volta na gaveta pra tentar depois
+          routesToKeep.push(route) 
         }
       }
 
-      // 4. Atualiza a gaveta só com as rotas que falharam (geralmente vai sobrar um array vazio [])
+      
       localStorage.setItem('giro_pending_routes', JSON.stringify(routesToKeep))
 
       if (routesToKeep.length < pendingRoutes.length) {
         setSyncStatus('success')
-        setTimeout(() => setSyncStatus('idle'), 4000) // Esconde a mensagem de sucesso depois de 4s
+        setTimeout(() => setSyncStatus('idle'), 4000) 
       }
 
     } catch (err) {
@@ -116,10 +116,10 @@ export default function OfflineSyncWorker() {
     }
   }
 
-  // Se não tem nada sincronizando, não mostra nada na tela (fica invisível)
+  
   if (syncStatus === 'idle') return null
 
-  // Pequeno balão verde flutuante avisando o usuário
+  
   return (
     <div className="fixed top-safe mt-4 left-1/2 -translate-x-1/2 z-[100] transition-all">
       <div className="bg-white rounded-full shadow-xl border border-gray-100 px-4 py-2 flex items-center gap-3">

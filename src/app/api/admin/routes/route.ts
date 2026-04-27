@@ -4,7 +4,7 @@ import { db } from '@/lib/db/remote/client'
 import { routes, users, waypoints, organizations } from '@/lib/db/remote/schema'
 import { eq, desc } from 'drizzle-orm'
 
-// GET — lista todas as rotas
+
 export async function GET() {
   try {
     const supabase = await createClient()
@@ -42,7 +42,7 @@ export async function GET() {
   }
 }
 
-// POST — cria nova rota
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
       distanceKm: body.distanceKm ? body.distanceKm.toString() : null,
       estimatedMinutes: body.estimatedMinutes ? parseInt(body.estimatedMinutes) : null,
       organizationId,
-      status: 'publicado', // 🔥 Corrigido para o padrão do Drizzle Enum
+      status: 'publicado', 
     }).returning()
 
     if (body.waypoints?.length > 0) {

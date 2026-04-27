@@ -86,7 +86,7 @@ export default function ShareClient() {
     } catch {}
   }
 
-  // ── LÓGICA REFORÇADA: SALVAR NO BANCO DE DADOS COM TRAVA DE 8 SEGUNDOS ──
+  
   async function saveActivityToDb(imageBase64: string | null = null) {
     if (isSaving || distanceKm === 0) return false
     setIsSaving(true)
@@ -103,7 +103,7 @@ export default function ShareClient() {
         socialImageBase64: imageBase64 
       }
 
-      // 🚀 TIMEOUT RESTRITO DE 8 SEGUNDOS
+      
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 8000)
 
@@ -120,7 +120,7 @@ export default function ShareClient() {
     } catch (error: any) {
       if (error.name === 'AbortError') {
         console.warn('Timeout offline alcançado na exportação. Prosseguindo localmente.')
-        // Ignora timeout por internet ruim e retorna TRUE liberando o fluxo pro usuário
+        
         return true
       }
       console.error('Erro ao salvar no banco:', error)
@@ -141,7 +141,7 @@ export default function ShareClient() {
       const canvas = await html2canvas(shareCardRef.current, {
         useCORS: true,
         allowTaint: true,
-        scale: 3, // Aumenta a qualidade
+        scale: 3, 
         backgroundColor: '#0A0A0A',
         logging: false,
       })

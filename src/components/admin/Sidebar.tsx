@@ -43,13 +43,13 @@ export default function Sidebar() {
   return (
     <aside className="w-60 min-h-screen flex flex-col border-r border-gray-100 bg-white">
 
-      {/* Logo */}
+      {}
       <div className="px-6 py-6 border-b border-gray-100">
         <NextImage src="/logoletra.png" alt="GIRO" width={80} height={32} priority />
         <p className="text-xs text-gray-400 mt-1 font-medium">Painel Admin</p>
       </div>
 
-      {/* Nav */}
+      {}
       <nav className="flex-1 px-3 py-4 flex flex-col gap-1">
         {navItems.map(item => {
           const active = pathname.startsWith(item.href)
@@ -70,7 +70,7 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Logout */}
+      {}
       <div className="px-3 py-4 border-t border-gray-100">
         <button
           onClick={handleLogout}

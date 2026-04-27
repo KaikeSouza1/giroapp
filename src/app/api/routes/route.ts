@@ -4,16 +4,16 @@ import { db } from '@/lib/db/remote/client'
 import { routes, users, waypoints, organizations } from '@/lib/db/remote/schema'
 import { eq, desc, and } from 'drizzle-orm'
 
-// GET — Lista as rotas para a Home e Mapa (sem importar o Role do usuário)
+
 export async function GET() {
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     
-    // 1. O cara tá logado no app? Tá. Então ele pode ver as rotas. (Ignora a tabela Users)
+    
     if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
-    // 2. Busca TUDO no banco de dados sem o filtro `.where()` que estava quebrando
+    
     const allRoutes = await db.select({
       id: routes.id,
       name: routes.name,
@@ -34,9 +34,9 @@ export async function GET() {
     .leftJoin(waypoints, and(eq(waypoints.routeId, routes.id), eq(waypoints.order, 1)))
     .orderBy(desc(routes.createdAt))
 
-    // 🔥 3. A SOLUÇÃO BRUTA: Filtramos na memória! 
-    // Pegamos a palavra que vier do banco, jogamos pra minúsculo e comparamos.
-    // Se no seu banco estiver 'published' ou 'publicado', ele VAI aparecer.
+    
+    
+    
     const publicRoutes = allRoutes.filter(route => {
       const statusLimpo = String(route.status).toLowerCase()
       return statusLimpo === 'publicado' || statusLimpo === 'published'
@@ -49,7 +49,7 @@ export async function GET() {
   }
 }
 
-// POST — Cria nova rota (Aqui mantemos a proteção para só Admins criarem lixo)
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
       distanceKm: body.distanceKm ? body.distanceKm.toString() : null,
       estimatedMinutes: body.estimatedMinutes ? parseInt(body.estimatedMinutes) : null,
       organizationId,
-      status: 'rascunho', // Forçado o termo em português para não quebrar o seu Drizzle Schema
+      status: 'rascunho', 
     }).returning()
 
     if (body.waypoints?.length > 0) {

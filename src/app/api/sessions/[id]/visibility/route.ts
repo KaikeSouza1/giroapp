@@ -15,13 +15,13 @@ export async function PATCH(
     
     if (!authUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    // BEM AQUI: Precisamos pegar o ID interno do usuário logado, pois o routeSessions guarda o users.id e não o supabaseAuthId
+    
     const [dbUser] = await db.select({ id: users.id }).from(users).where(eq(users.supabaseAuthId, authUser.id))
     if (!dbUser) return NextResponse.json({ error: 'User not found' }, { status: 404 })
 
     const { isPublic } = await request.json()
 
-    // Atualiza apenas se a sessão pertencer ao utilizador logado (Segurança) usando o ID interno
+    
     await db.update(routeSessions)
       .set({ isPublic })
       .where(and(eq(routeSessions.id, sessionId), eq(routeSessions.userId, dbUser.id)))

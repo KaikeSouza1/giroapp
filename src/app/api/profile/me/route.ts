@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
       .from(followers)
       .where(eq(followers.followerId, user.id))
 
-    // BUSCA AS ROTAS CONCLUÍDAS COM A COLUNA DE PRIVACIDADE REAL
+    
     const completedRoutesRes = await db
       .select({
         id: routeSessions.id,
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
         startedAt: routeSessions.startedAt,
         completedAt: routeSessions.completedAt,
         distanceKm: routeSessions.totalDistanceKm,
-        isPublic: routeSessions.isPublic, // 🔥 BUSCA DO BANCO
+        isPublic: routeSessions.isPublic, 
         photos: sql<string[]>`array_remove(array_agg(${checkins.selfieImagePath}), NULL)`
       })
       .from(routeSessions)
@@ -70,11 +70,11 @@ export async function GET(request: NextRequest) {
       .innerJoin(badges, eq(userBadges.badgeId, badges.id))
       .where(eq(userBadges.userId, user.id))
 
-    // ─── LÓGICA DE SINCRONIZAÇÃO RETROATIVA (AUTO-HEALING) ───
+    
     const totalCompleted = completedRoutesRes.length;
     const currentBadgeNames = badgesRes.map(b => b.name);
     
-    // Nomes mapeados perfeitamente com o Front-End
+    
     const badgeRules = [
       { count: 1, name: 'Pioneiro', desc: 'Concluiu a primeira rota oficial.', img: 'internal' },
       { count: 5, name: 'Explorador', desc: 'Alcançou a marca de 5 rotas concluídas.', img: 'internal' },
@@ -133,7 +133,7 @@ export async function GET(request: NextRequest) {
           completedAt: r.completedAt ? r.completedAt.toISOString() : new Date().toISOString(),
           distanceKm: r.distanceKm,
           elapsedMinutes,
-          isPublic: r.isPublic, // 🔥 REPASSA PARA O FRONT
+          isPublic: r.isPublic, 
           photos: Array.from(new Set(r.photos || [])).filter(Boolean)
         }
       }),

@@ -20,7 +20,7 @@ export default function NotificationsPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return router.push('/login')
 
-      // Busca notificações completas
+      
       const res = await fetch('/api/notifications', {
         headers: { Authorization: `Bearer ${session.access_token}` }
       })
@@ -29,7 +29,7 @@ export default function NotificationsPage() {
         const data = await res.json()
         setNotifs(Array.isArray(data) ? data : [])
         
-        // Marca todas como lidas instantaneamente
+        
         if (data.length > 0) {
           await fetch('/api/notifications', {
             method: 'PUT',
@@ -52,7 +52,7 @@ export default function NotificationsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 font-[family-name:var(--font-dm)]">
-      {/* Header Fixo */}
+      {}
       <div className="bg-white px-5 pt-12 pb-4 shadow-sm flex items-center gap-4 sticky top-0 z-20">
         <button 
           onClick={() => router.back()} 
@@ -65,7 +65,7 @@ export default function NotificationsPage() {
         <h1 className="text-xl font-black text-gray-900">Notificações</h1>
       </div>
 
-      {/* Lista */}
+      {}
       <div className="p-5 flex flex-col gap-3">
         {notifs.length === 0 ? (
           <div className="text-center py-20 flex flex-col items-center gap-4">
@@ -83,7 +83,7 @@ export default function NotificationsPage() {
                 }`}
               >
                 {n.actor.avatarUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
+                  
                   <img src={n.actor.avatarUrl} className="w-14 h-14 rounded-full object-cover border-2 border-white shadow-sm" alt="Avatar" />
                 ) : (
                   <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#830200] to-[#E05300] flex items-center justify-center font-black text-white text-xl border-2 border-white shadow-sm">

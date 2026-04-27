@@ -10,7 +10,7 @@ import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 import { Share } from '@capacitor/share'
 import { uploadImageToBucket } from '@/lib/supabase/storage'
 
-// Função auxiliar para converter URL em Base64 para o Share Nativo
+
 async function urlToBase64(url: string): Promise<string> {
   const response = await fetch(url)
   const blob = await response.blob()
@@ -178,7 +178,7 @@ export default function ProfilePage() {
     }
   }
 
-  // ── COMPARTILHAMENTO SMS (CÁLCULO DE PACE + TEXTO PROFISSIONAL) ──────
+  
   function handleSmsShare() {
     if (!routeToShare || !smsPhone.trim()) return
     
@@ -297,7 +297,7 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-gray-50 font-[family-name:var(--font-dm)] pb-24 relative">
 
-      {/* Modal Visualizador de Foto */}
+      {}
       {isPhotoViewerOpen && selectedPhoto && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 backdrop-blur-sm" onClick={closePhotoViewer}>
           <button className="absolute top-10 right-6 z-10 w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white backdrop-blur-sm" onClick={closePhotoViewer}>
@@ -307,7 +307,7 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Modal Foto de Perfil */}
+      {}
       {isAvatarModalOpen && (
         <div className="fixed inset-0 z-[150] flex flex-col justify-end bg-black/60 backdrop-blur-sm" onClick={() => setIsAvatarModalOpen(false)}>
           <div className="bg-white rounded-t-3xl p-6 pb-12 flex flex-col gap-3 shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -320,14 +320,14 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Modal de Compartilhamento Premium (Laranja) */}
+      {}
       {isShareModalOpen && routeToShare && (
         <div className="fixed inset-0 z-[150] flex flex-col justify-end bg-black/60 backdrop-blur-sm" onClick={() => setIsShareModalOpen(false)}>
           <div className="bg-white rounded-t-[32px] p-6 pb-12 flex flex-col gap-5 shadow-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-1 flex-shrink-0" />
             <h3 className="text-xl font-black text-gray-900 flex-shrink-0 text-center">Compartilhar Desempenho</h3>
             
-            {/* Box SMS */}
+            {}
             <div className="bg-orange-50 border border-orange-100 rounded-2xl p-5 flex-shrink-0">
                <label className="text-[10px] font-black text-orange-800 uppercase tracking-widest mb-2 block">Relatório via SMS</label>
                <div className="flex gap-2">
@@ -355,7 +355,7 @@ export default function ProfilePage() {
               <div className="flex-1 h-px bg-gray-100" />
             </div>
 
-            {/* Box Nativo */}
+            {}
             <button 
               onClick={handleNativeShare} 
               disabled={isPreparingShare}
@@ -372,7 +372,7 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Header Profile com Identidade GIRO (Ondas Laranjas) */}
+      {}
       <div className="relative overflow-hidden px-6 pt-12 pb-16"
         style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
         <svg className="absolute inset-0 w-full h-full opacity-[0.1]" viewBox="0 0 375 200" preserveAspectRatio="xMidYMid slice"><path d="M0,100 Q93,60 187,100 Q280,140 375,100" fill="none" stroke="#fff" strokeWidth="1.5"/></svg>

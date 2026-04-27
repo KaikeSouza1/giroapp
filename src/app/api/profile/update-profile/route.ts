@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
   try {
     const { supabaseAuthId, avatarUrl } = await request.json()
     
-    // Atualiza a URL da foto do usuário no banco de dados Drizzle
+    
     await db.update(users)
       .set({ avatarUrl: avatarUrl })
       .where(eq(users.supabaseAuthId, supabaseAuthId))

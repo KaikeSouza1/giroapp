@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     const [me] = await db.select({ id: users.id }).from(users).where(eq(users.supabaseAuthId, authUser.id))
     if (!me) return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 })
 
-    // Retorna apenas o número de não lidas para o sininho na Home
+    
     if (countOnly) {
       const unreadList = await db.select({ id: notifications.id })
         .from(notifications)
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ count: unreadList.length })
     }
 
-    // Retorna a lista completa com os dados de quem seguiu
+    
     const list = await db.select({
       id: notifications.id,
       isRead: notifications.isRead,
@@ -48,7 +48,7 @@ export async function GET(request: Request) {
   }
 }
 
-// Rota para marcar todas as notificações como Lidas
+
 export async function PUT(request: Request) {
   try {
     const supabase = await createClient()

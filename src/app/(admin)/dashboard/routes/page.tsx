@@ -25,7 +25,7 @@ const difficultyColor: Record<string, string> = {
   facil: '#22c55e', medio: '#f59e0b', dificil: '#ef4444', extremo: '#7c3aed'
 }
 
-// 🔥 Mapeamento blindado para aceitar o legado mas focar no "published"
+
 const statusLabel: Record<string, string> = {
   draft: 'Rascunho', rascunho: 'Rascunho', 
   published: 'Publicada', publicado: 'Publicada', 
@@ -68,7 +68,7 @@ export default function RoutesPage() {
       })
   }, [])
 
-  // 🔥 ATUALIZA O STATUS DIRETO DA TABELA (Ex: para 'published' ou 'archived')
+  
   async function updateStatus(id: string, status: string) {
     try {
       const res = await fetch(`/api/admin/routes/${id}/status`, {
@@ -84,7 +84,7 @@ export default function RoutesPage() {
     }
   }
 
-  // 🔥 EXCLUIR ROTA COM VALIDAÇÃO
+  
   async function handleDelete(id: string) {
     const confirmDelete = window.confirm("Tem certeza que deseja excluir esta rota permanentemente? Isso só funcionará se ninguém tiver percorrido ela ainda. Caso contrário, apenas a arquive.")
     if (!confirmDelete) return
@@ -189,7 +189,7 @@ export default function RoutesPage() {
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-2">
                         
-                        {/* Se não for publicada, dá a opção de publicar */}
+                        {}
                         {route.status !== 'published' && (
                           <button
                             onClick={() => updateStatus(route.id, 'published')}
@@ -199,7 +199,7 @@ export default function RoutesPage() {
                           </button>
                         )}
 
-                        {/* Se estiver publicada, dá a opção de arquivar */}
+                        {}
                         {route.status === 'published' && (
                           <button
                             onClick={() => updateStatus(route.id, 'archived')}
@@ -216,7 +216,7 @@ export default function RoutesPage() {
                           Editar
                         </Link>
 
-                        {/* Botão de excluir */}
+                        {}
                         <button
                           onClick={() => handleDelete(route.id)}
                           className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all border border-transparent hover:border-red-200"

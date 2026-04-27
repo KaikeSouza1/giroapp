@@ -1,11 +1,11 @@
-// src/app/api/sessions/route.ts
+
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
 import { routeSessions, users } from '@/lib/db/remote/schema'
 import { eq, and } from 'drizzle-orm'
 
-// POST — inicia uma nova sessão de rota
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
 
     const { routeId } = await request.json()
 
-    // Se já existe uma sessão em andamento para esta rota, retorna ela
+    
     const [existing] = await db.select()
       .from(routeSessions)
       .where(and(
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ id: existing.id, resumed: true })
     }
 
-    // Cria nova sessão
+    
     const localId = crypto.randomUUID()
     const [newSession] = await db.insert(routeSessions).values({
       localId,

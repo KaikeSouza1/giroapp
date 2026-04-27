@@ -1,4 +1,4 @@
-// src/app/api/feed/route.ts
+
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
@@ -25,10 +25,10 @@ export async function GET(request: NextRequest) {
     let targetUserIds: string[] = []
 
     if (profileUserId) {
-      // Se tiver userId na URL, puxa só as atividades desse usuário
+      
       targetUserIds = [profileUserId]
     } else {
-      // Lógica original: puxar de quem eu sigo + eu mesmo
+      
       const followingList = await db.select({ followingId: followers.followingId }).from(followers).where(eq(followers.followerId, dbUser.id))
       const followingIds = followingList.map(f => f.followingId)
       targetUserIds = [...followingIds, dbUser.id]
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
 
     if (targetUserIds.length === 0) return NextResponse.json([])
 
-    // ── O SEU CÓDIGO INTACTO, APENAS COM AS 3 CONTAGENS DE LIKES/COMMENTS ADICIONADAS ──
+    
     const sessions = await db.select({
       sessionId: routeSessions.id,
       userId: routeSessions.userId,
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
       socialImageUrl: routeSessions.socialImageUrl,
       isPublic: routeSessions.isPublic,
       
-      // Contadores Sociais
+      
       likesCount: sql<number>`CAST((SELECT count(*) FROM session_likes WHERE session_id = ${routeSessions.id}) AS INTEGER)`,
       commentsCount: sql<number>`CAST((SELECT count(*) FROM session_comments WHERE session_id = ${routeSessions.id}) AS INTEGER)`,
       hasLiked: sql<boolean>`CASE WHEN EXISTS(SELECT 1 FROM session_likes WHERE session_id = ${routeSessions.id} AND user_id = ${dbUser.id}) THEN true ELSE false END`
@@ -59,8 +59,8 @@ export async function GET(request: NextRequest) {
         and(
           inArray(routeSessions.userId, targetUserIds),
           or(
-            eq(routeSessions.isPublic, true), // Exibe se for público
-            eq(routeSessions.userId, dbUser.id) // O dono da rota sempre vê suas próprias rotas ocultas no próprio feed
+            eq(routeSessions.isPublic, true), 
+            eq(routeSessions.userId, dbUser.id) 
           )
         )
       )
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
 
     if (sessions.length === 0) return NextResponse.json([])
 
-    // Filtra IDs de rotas válidos (Treinos livres tem routeId = null)
+    
     const routeIds = [...new Set(sessions.map(s => s.routeId).filter(Boolean))] as string[]
     const userIds = [...new Set(sessions.map(s => s.userId))]
 
@@ -121,14 +121,14 @@ export async function GET(request: NextRequest) {
         waypointCount: s.routeId ? (wpCountMap[s.routeId] ?? 0) : 0,
         distanceKm: s.totalDistanceKm,
         
-        // Novos campos pro front-end (VOCÊ TEM RAZÃO, EU TINHA APAGADO ISSO!)
+        
         socialImageUrl: s.socialImageUrl,
         averagePace: s.averagePace,
         durationSeconds: s.durationSeconds,
         activityType: s.activityType,
         isPublic: s.isPublic,
         
-        // Interações
+        
         likesCount: Number(s.likesCount || 0),
         commentsCount: Number(s.commentsCount || 0),
         hasLiked: s.hasLiked === true || String(s.hasLiked) === 'true'

@@ -1,4 +1,4 @@
-// src/app/api/sessions/[id]/checkin/route.ts
+
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
@@ -22,7 +22,7 @@ export async function POST(
 
     const {
       waypointId,
-      selfieImagePath,   // URL pública da selfie no Supabase Storage
+      selfieImagePath,   
       capturedLatitude,
       capturedLongitude,
       distanceFromWaypointMeters,

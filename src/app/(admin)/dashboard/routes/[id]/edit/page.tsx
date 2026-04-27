@@ -1,4 +1,4 @@
-// src/app/(admin)/dashboard/routes/[id]/edit/page.tsx
+
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
@@ -22,7 +22,7 @@ type Organization = { id: string; name: string }
 
 export default function EditRoutePage() {
   const router = useRouter()
-  const { id: routeId } = useParams() // Captura o ID da URL de forma robusta
+  const { id: routeId } = useParams() 
   
   const mapRef = useRef<any>(null)
   const mapContainerRef = useRef<HTMLDivElement>(null)
@@ -119,7 +119,7 @@ export default function EditRoutePage() {
 
       const map = L.map(mapContainerRef.current!, { center, zoom: waypoints.length > 0 ? 15 : 4 })
       
-      // Google Maps Híbrido Satélite para edição precisa
+      
       L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
         maxZoom: 20,
         attribution: '© Google Maps',

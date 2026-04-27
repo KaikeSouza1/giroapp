@@ -24,7 +24,7 @@ export default function MobileLayout({ children }: { children: React.ReactNode }
   return (
     <div className={`${bebasNeue.variable} ${dmSans.variable} min-h-screen relative`}>
       
-      {/* 🤖 O Robô Invisível: Fica escutando a internet e sincronizando trilhas pendentes */}
+      {}
       <OfflineSyncWorker />
 
       {children}

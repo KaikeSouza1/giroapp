@@ -1,4 +1,4 @@
-// src/app/api/feed/[sessionId]/like/route.ts
+
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
@@ -47,7 +47,7 @@ export async function POST(
       liked = true
     }
 
-    // FIX: Retorna o total atualizado para o frontend sincronizar corretamente
+    
     const [{ value: likesCount }] = await db
       .select({ value: count() })
       .from(sessionLikes)

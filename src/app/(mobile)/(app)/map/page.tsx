@@ -1,4 +1,4 @@
-// src/app/(mobile)/(app)/map/page.tsx
+
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 import RouteCard from '@/components/mobile/RouteCard'
 
-// CSS essencial para o Leaflet não quebrar visualmente
+
 import 'leaflet/dist/leaflet.css'
 
 type Route = {
@@ -52,7 +52,7 @@ export default function ExploreMapPage() {
         })
         if (res.ok) {
           const data = await res.json()
-          // Filtra rotas que possuem o primeiro waypoint (startLatitude/Longitude vindo do Join)
+          
           const validRoutes = data.filter((r: Route) => r.startLatitude && r.startLongitude)
           setRoutes(validRoutes)
           if (validRoutes.length > 0) setActiveRouteId(validRoutes[0].id)

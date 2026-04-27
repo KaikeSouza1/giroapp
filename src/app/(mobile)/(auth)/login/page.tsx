@@ -42,7 +42,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex flex-col bg-white font-[family-name:var(--font-dm)]">
 
-      {/* Header laranja */}
+      {}
       <div className="relative overflow-hidden px-6 pt-12 pb-10"
         style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
 
@@ -53,7 +53,7 @@ export default function LoginPage() {
           <path d="M0,40 Q93,80 187,40 Q280,0 375,40" fill="none" stroke="#fff" strokeWidth="0.7"/>
         </svg>
 
-        {/* Logo */}
+        {}
         <div className="relative z-10 mb-6">
           <NextImage
             src="/logogiroprincipal.png"
@@ -77,7 +77,7 @@ export default function LoginPage() {
         <div className="absolute bottom-0 left-0 right-0 h-6 bg-white rounded-t-3xl" />
       </div>
 
-      {/* Formulário */}
+      {}
       <div className="flex-1 px-6 pt-4 pb-10 bg-white">
         <form onSubmit={handleLogin} className="flex flex-col gap-4">
 

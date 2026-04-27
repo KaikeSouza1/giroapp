@@ -41,12 +41,12 @@ export default function RouteClient({ params }: { params: Promise<{ id: string }
   const router = useRouter()
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
-  const tileLayerRef = useRef<any>(null) // Referência para podermos trocar a camada sem recarregar o mapa
+  const tileLayerRef = useRef<any>(null) 
 
   const [route, setRoute] = useState<RouteDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [mapReady, setMapReady] = useState(false)
-  const [isSatellite, setIsSatellite] = useState(false) // Novo estado para controlar o tipo do mapa
+  const [isSatellite, setIsSatellite] = useState(false) 
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -69,7 +69,7 @@ export default function RouteClient({ params }: { params: Promise<{ id: string }
     load()
   }, [resolvedParams.id, router, supabase.auth])
 
-  // Inicializa o mapa UMA VEZ
+  
   useEffect(() => {
     if (!route || !mapContainerRef.current || mapRef.current) return
     const currentRoute = route
@@ -92,7 +92,7 @@ export default function RouteClient({ params }: { params: Promise<{ id: string }
       
       const map = L.map(mapContainerRef.current!, { center, zoom: 14, zoomControl: false })
       
-      // Inicialmente carrega o Google Maps padrão (lyrs=m)
+      
       const initialUrl = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}'
       
       tileLayerRef.current = L.tileLayer(initialUrl, {
@@ -121,10 +121,10 @@ export default function RouteClient({ params }: { params: Promise<{ id: string }
     initMap()
   }, [route])
 
-  // Efeito reativo para trocar a camada do mapa ao clicar no botão
+  
   useEffect(() => {
     if (tileLayerRef.current) {
-      // lyrs=y (Híbrido Satélite) | lyrs=m (Padrão)
+      
       const newUrl = isSatellite 
         ? 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}' 
         : 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}'
@@ -150,7 +150,7 @@ export default function RouteClient({ params }: { params: Promise<{ id: string }
   return (
     <div className="min-h-screen bg-white font-[family-name:var(--font-dm)]">
       <div className="relative h-64">
-        {/* Container do Leaflet */}
+        {}
         <div ref={mapContainerRef} className="absolute inset-0" />
         
         {!mapReady && (
@@ -159,7 +159,7 @@ export default function RouteClient({ params }: { params: Promise<{ id: string }
           </div>
         )}
         
-        {/* Botão de Voltar (Canto Superior Esquerdo) */}
+        {}
         <button
           onClick={() => router.back()}
           className="absolute top-4 left-4 z-[1000] w-10 h-10 rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-transform"
@@ -170,7 +170,7 @@ export default function RouteClient({ params }: { params: Promise<{ id: string }
           </svg>
         </button>
 
-        {/* Botão de Trocar Camada (Canto Superior Direito) */}
+        {}
         <button
           onClick={() => setIsSatellite(!isSatellite)}
           className="absolute top-4 right-4 z-[1000] w-10 h-10 rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-transform"

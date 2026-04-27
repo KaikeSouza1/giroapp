@@ -44,7 +44,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Todos os campos são obrigatórios' }, { status: 400 })
     }
 
-    // 1. Cria a Organização no banco
+    
     const [newOrg] = await db.insert(organizations).values({
       name,
       slug,
@@ -52,7 +52,7 @@ export async function POST(req: Request) {
       isActive: true
     }).returning()
 
-    // 2. Cria o Usuário do cliente no Supabase Auth usando a chave Service Role (Admin)
+    
     const adminSupabase = createAdminClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY! 
@@ -61,20 +61,20 @@ export async function POST(req: Request) {
     const { data: authData, error: createAuthError } = await adminSupabase.auth.admin.createUser({
       email: adminEmail,
       password: adminPassword,
-      email_confirm: true // Já cria o e-mail como confirmado
+      email_confirm: true 
     })
 
     if (createAuthError) {
       return NextResponse.json({ error: `Erro no Auth: ${createAuthError.message}` }, { status: 400 })
     }
 
-    // 3. Vincula esse novo usuário como Admin da Organização na nossa tabela
+    
     await db.insert(users).values({
       supabaseAuthId: authData.user.id,
       email: adminEmail,
-      username: `${slug}-admin-${Date.now().toString().slice(-4)}`, // Username único
+      username: `${slug}-admin-${Date.now().toString().slice(-4)}`, 
       displayName: `Admin ${name}`,
-      role: 'admin_org', // CORRIGIDO AQUI
+      role: 'admin_org', 
       organizationId: newOrg.id
     })
 

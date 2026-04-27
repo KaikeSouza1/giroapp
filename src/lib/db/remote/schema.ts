@@ -2,7 +2,7 @@ import { pgTable, uuid, text, varchar, timestamp,
          boolean, numeric, integer, pgEnum, jsonb } from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
 
-// ─── ENUMS (Tipos Traduzidos para Português) ─────────────────────────────────
+
 
 export const routeStatusEnum = pgEnum('route_status', ['rascunho', 'publicado', 'arquivado'])
 export const checkinStatusEnum = pgEnum('checkin_status', ['pendente', 'aprovado', 'rejeitado'])
@@ -12,7 +12,7 @@ export const routeTypeEnum = pgEnum('route_type', ['caminhada', 'corrida', 'cicl
 export const sessionStatusEnum = pgEnum('session_status', ['em_andamento', 'pausado', 'concluido', 'cancelado'])
 export const notificationTypeEnum = pgEnum('notification_type', ['follow']) 
 
-// ─── ORGANIZAÇÕES (SaaS) ──────────────────────────────────────────────────────
+
 
 export const organizations = pgTable('organizations', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -24,7 +24,7 @@ export const organizations = pgTable('organizations', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
 
-// ─── USUÁRIOS ─────────────────────────────────────────────────────────────────
+
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -49,7 +49,7 @@ export const users = pgTable('users', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
 
-// ─── SEGUIDORES (Social) ──────────────────────────────────────────────────────
+
 
 export const followers = pgTable('followers', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -58,7 +58,7 @@ export const followers = pgTable('followers', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
-// ─── NOTIFICAÇÕES ─────────────────────────────────────────────────────────────
+
 
 export const notifications = pgTable('notifications', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -69,7 +69,7 @@ export const notifications = pgTable('notifications', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
-// ─── ROTAS ───────────────────────────────────────────────────────────────────
+
 
 export const routes = pgTable('routes', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -93,7 +93,7 @@ export const routes = pgTable('routes', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
 
-// ─── WAYPOINTS (Pontos da Rota) ───────────────────────────────────────────────
+
 
 export const waypoints = pgTable('waypoints', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -109,7 +109,7 @@ export const waypoints = pgTable('waypoints', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
-// ─── REGISTRO DE PASSAGEM (Check-in de Waypoints) ────────────────────────────
+
 
 export const checkins = pgTable('checkins', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -133,7 +133,7 @@ export const checkins = pgTable('checkins', {
   metadata: jsonb('metadata'),   
 })
 
-// ─── SESSÕES DE ATIVIDADE (O "STRAVA" TRACKER) ───────────────────────────────
+
 
 export const routeSessions = pgTable('route_sessions', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -157,7 +157,7 @@ export const routeSessions = pgTable('route_sessions', {
   socialImageUrl: text('social_image_url'),
 })
 
-// ─── INTERAÇÕES DO FEED (NOVO - LIKES E COMENTÁRIOS) ─────────────────────────
+
 
 export const sessionLikes = pgTable('session_likes', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -174,7 +174,7 @@ export const sessionComments = pgTable('session_comments', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
-// ─── INSÍGNIAS (Badges) ───────────────────────────────────────────────────────
+
 
 export const badges = pgTable('badges', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -194,7 +194,7 @@ export const userBadges = pgTable('user_badges', {
   awardedAt: timestamp('awarded_at').defaultNow().notNull(),
 })
 
-// ─── RELATIONS ────────────────────────────────────────────────────────────────
+
 
 export const organizationsRelations = relations(organizations, ({ many }) => ({
   users: many(users),

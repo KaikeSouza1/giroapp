@@ -112,7 +112,7 @@ export default function OrganizationsPage() {
 
       <main className="flex-1 p-8">
         
-        {/* Cabeçalho */}
+        {}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2">
@@ -133,7 +133,7 @@ export default function OrganizationsPage() {
 
         {error && <div className="mb-6 rounded-xl px-4 py-3 bg-red-50 border border-red-100 text-red-500 text-sm font-medium">{error}</div>}
 
-        {/* Tabela */}
+        {}
         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
           {loading ? (
             <div className="flex items-center justify-center py-20">
@@ -192,13 +192,13 @@ export default function OrganizationsPage() {
           )}
         </div>
 
-        {/* Modal Estilo Giro */}
+        {}
         {isModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            {/* Backdrop Blur */}
+            {}
             <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
             
-            {/* Card do Modal */}
+            {}
             <div className="relative bg-white rounded-3xl p-8 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
               <h2 className="text-2xl font-black text-gray-900 mb-6">
                 {modalMode === 'create' ? 'Nova Organização' : 'Editar Organização'}
@@ -242,7 +242,7 @@ export default function OrganizationsPage() {
                   )}
                 </div>
 
-                {/* Exibe criação de credenciais apenas ao criar */}
+                {}
                 {modalMode === 'create' && (
                   <div className="mt-6 pt-6 border-t border-gray-100 space-y-4">
                     <div className="mb-2">

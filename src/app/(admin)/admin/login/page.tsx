@@ -35,7 +35,7 @@ export default function AdminLoginPage() {
     const res = await fetch('/api/users/me')
     const user = await res.json()
 
-    // Verifica se tem permissão para acessar o painel (Superadmin ou Admin de Organização)
+    
     if (user?.role !== 'superadmin' && user?.role !== 'admin_org') {
       await supabase.auth.signOut()
       setError('Acesso negado. Esta conta não tem permissão de administrador.')
@@ -43,7 +43,7 @@ export default function AdminLoginPage() {
       return
     }
 
-    // Redirecionamento inteligente baseado no nível de acesso
+    
     if (user.role === 'superadmin') {
       router.push('/dashboard/organizations')
     } else {
@@ -60,7 +60,7 @@ export default function AdminLoginPage() {
   return (
     <div className="min-h-screen flex" style={{ background: '#F9F9F9' }}>
 
-      {/* Painel esquerdo — laranja */}
+      {}
       <div className="hidden lg:flex w-1/2 flex-col justify-between p-12 relative overflow-hidden"
         style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 60%, #FF8C00 100%)' }}>
 
@@ -106,11 +106,11 @@ export default function AdminLoginPage() {
         </div>
       </div>
 
-      {/* Painel direito — form */}
+      {}
       <div className="flex-1 flex items-center justify-center px-8 py-12">
         <div className="w-full max-w-md">
 
-          {/* Logo mobile */}
+          {}
           <div className="lg:hidden mb-8">
             <NextImage src="/logogiroprincipal.png" alt="GIRO" width={120} height={48} priority />
           </div>

@@ -1,4 +1,4 @@
-// src/app/(mobile)/(app)/home/page.tsx
+
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -15,7 +15,7 @@ type UserProfile = {
   username: string
   avatarUrl: string | null
   isSelfieCaptured: boolean
-  // Novos campos que a API agora retorna:
+  
   routesCompleted?: number
   badgesCount?: number
   photosCount?: number
@@ -42,7 +42,7 @@ export default function HomePage() {
   const [greeting, setGreeting] = useState('')
   const [filter, setFilter] = useState<string>('Todas')
   
-  // Estado para a bolinha do sininho (Polling)
+  
   const [unreadCount, setUnreadCount] = useState(0)
 
   const supabase = createBrowserClient(
@@ -57,7 +57,7 @@ export default function HomePage() {
     else setGreeting('Boa noite')
   }, [])
 
-  // Carregamento inicial pesado (Perfil, Rotas e Notificações)
+  
   useEffect(() => {
     async function loadData() {
       const { data: { session } } = await supabase.auth.getSession()
@@ -87,7 +87,7 @@ export default function HomePage() {
     loadData()
   }, [router, supabase.auth])
 
-  // -- POLLING SUAVE --
+  
   useEffect(() => {
     async function checkUnreadNotifications() {
       const { data: { session } } = await supabase.auth.getSession()
@@ -195,7 +195,7 @@ export default function HomePage() {
 
         <div className="relative z-10 flex gap-3 mt-6">
           {[
-            // Aqui aplicamos as variáveis reais puxadas da API
+            
             { label: 'Rotas concluídas', value: user?.routesCompleted ?? 0 },
             { label: 'Insígnias', value: user?.badgesCount ?? 0 },
             { label: 'Fotos tiradas', value: user?.photosCount ?? 0 },

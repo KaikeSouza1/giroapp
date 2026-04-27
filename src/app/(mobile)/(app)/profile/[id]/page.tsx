@@ -1,4 +1,4 @@
-// src/app/(mobile)/(app)/profile/[id]/page.tsx
+
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -74,7 +74,7 @@ export default function PublicProfilePage() {
         })
         const data = await res.json()
         
-        // CORREÇÃO: Garante que completedRoutes e photos sempre existam como arrays
+        
         if (data.completedRoutes) {
           data.completedRoutes = data.completedRoutes
             .filter((r: any) => r.routeId !== null)
@@ -118,7 +118,7 @@ export default function PublicProfilePage() {
     }
   }
 
-  // CORREÇÃO: Formatação robusta de tempo
+  
   const formatTime = (mins: number) => {
     if (!mins || mins <= 0) return '--'
     if (mins < 60) return `${mins}m`
@@ -144,7 +144,7 @@ export default function PublicProfilePage() {
   return (
     <div className="min-h-screen bg-gray-50 font-[family-name:var(--font-dm)] pb-24 relative">
 
-      {/* Visualizador de Foto Premium (Full Screen) */}
+      {}
       {isPhotoViewerOpen && selectedPhoto && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm" onClick={() => setIsPhotoViewerOpen(false)}>
           <button className="absolute top-12 right-6 z-10 w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-white border border-white/20">
@@ -154,7 +154,7 @@ export default function PublicProfilePage() {
         </div>
       )}
 
-      {/* Header Premium Espelhado */}
+      {}
       <div className="relative overflow-hidden px-6 pt-12 pb-16"
         style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
         
@@ -229,7 +229,7 @@ export default function PublicProfilePage() {
                       <Link href={`/routes/${route.routeId}`} className="text-[10px] font-black text-orange-600 bg-orange-50 px-3 py-1.5 rounded-xl border border-orange-100 active:scale-90 transition-all">VER MAPA</Link>
                     </div>
 
-                    {/* Stats de Conclusão CORRIGIDOS */}
+                    {}
                     <div className="grid grid-cols-2 divide-x divide-gray-100 bg-gray-50/50 py-4 border-b border-gray-50">
                       <div className="text-center px-4">
                         <p className="text-gray-400 text-[9px] font-black uppercase tracking-widest mb-1">Tempo Gasto</p>
@@ -241,7 +241,7 @@ export default function PublicProfilePage() {
                       </div>
                     </div>
 
-                    {/* Galeria de Fotos CORRIGIDA */}
+                    {}
                     <div className="px-6 py-5">
                       <p className="text-gray-400 text-[9px] font-black uppercase tracking-widest mb-3">Registros da Aventura</p>
                       {route.photos && route.photos.length > 0 ? (

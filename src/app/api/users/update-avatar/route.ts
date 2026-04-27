@@ -1,4 +1,4 @@
-// src/app/api/users/update-avatar/route.ts
+
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'

@@ -1,6 +1,6 @@
-// src/app/(mobile)/(app)/profile/[id]/network/NetworkContent.tsx
-// Client Component que pode usar useSearchParams() com segurança porque
-// está sempre envolto em <Suspense> pelo page.tsx pai.
+
+
+
 'use client'
 
 import { useEffect, useState, use } from 'react'
@@ -46,7 +46,7 @@ export default function NetworkContent({ params }: { params: Promise<{ id: strin
 
   return (
     <div className="min-h-screen bg-gray-50 font-[family-name:var(--font-dm)]">
-      {/* Header Fixo */}
+      {}
       <div className="bg-white px-5 pt-12 pb-4 shadow-sm flex items-center gap-4 sticky top-0 z-20">
         <button
           onClick={() => router.back()}
@@ -59,7 +59,7 @@ export default function NetworkContent({ params }: { params: Promise<{ id: strin
         <h1 className="text-xl font-black text-gray-900">Rede</h1>
       </div>
 
-      {/* Tabs */}
+      {}
       <div className="flex bg-white px-5 border-b border-gray-100">
         <button
           onClick={() => setActiveTab('followers')}
@@ -83,7 +83,7 @@ export default function NetworkContent({ params }: { params: Promise<{ id: strin
         </button>
       </div>
 
-      {/* Lista */}
+      {}
       <div className="p-5 flex flex-col gap-3">
         {loading ? (
           <div className="py-12 flex justify-center">
@@ -106,7 +106,7 @@ export default function NetworkContent({ params }: { params: Promise<{ id: strin
             <Link key={user.id} href={`/profile/${user.id}`}>
               <div className="bg-white p-3 rounded-2xl flex items-center gap-3 shadow-sm border border-gray-100 active:scale-[0.98] transition-transform">
                 {user.avatarUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
+                  
                   <img src={user.avatarUrl} className="w-12 h-12 rounded-full object-cover" alt="Avatar" />
                 ) : (
                   <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center font-black text-gray-500 text-lg">

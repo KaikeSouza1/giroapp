@@ -1,4 +1,4 @@
-// src/app/api/feed/[sessionId]/comments/route.ts
+
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/client'
 import { db } from '@/lib/db/remote/client'
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ses
         .from(sessionComments)
         .innerJoin(users, eq(sessionComments.userId, users.id))
         .where(eq(sessionComments.sessionId, sessionId))
-        .orderBy(asc(sessionComments.createdAt)) // Mais antigos no topo
+        .orderBy(asc(sessionComments.createdAt)) 
 
         return NextResponse.json(comments)
     } catch (err: any) {
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ se
         const sessionId = resolvedParams.sessionId
         const { content } = await request.json()
         
-        // Captura o token explicitamente 
+        
         const token = request.headers.get('Authorization')?.replace('Bearer ', '')
         if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

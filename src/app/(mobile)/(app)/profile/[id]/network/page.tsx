@@ -1,7 +1,7 @@
-// src/app/(mobile)/(app)/profile/[id]/network/page.tsx
-// CORREÇÃO: useSearchParams() no Next.js 15 requer um Suspense boundary.
-// Separamos o componente que usa useSearchParams em um arquivo Client Component
-// e envolvemos em Suspense aqui, no arquivo da página (Server Component).
+
+
+
+
 
 import { Suspense } from 'react'
 import NetworkContent from './NetworkContent'

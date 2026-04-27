@@ -1,5 +1,5 @@
-// Schema local — é um SUBSET do PostgreSQL.
-// Armazena apenas o necessário para funcionar 100% offline.
+
+
 
 export const LOCAL_SCHEMA_SQL = `
   -- Dados das rotas baixados do servidor (cache)

@@ -17,7 +17,7 @@ export default function RecordClient() {
   const router = useRouter()
   const store = useActivityStore()
 
-  // ── Local UI state ────────────────────────────────────────────────────────
+  
   const [elapsedMs, setElapsedMs] = useState(0)
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null)
   const [currentLoc, setCurrentLoc] = useState<{lat: number, lng: number} | null>(null)
@@ -25,10 +25,10 @@ export default function RecordClient() {
   const [autoPauseWarning, setAutoPauseWarning] = useState(false)
   const [showStopModal, setShowStopModal] = useState(false)
 
-  // 🚀 NOVO ESTADO: Tela de transição para evitar o "bug" congelado
+  
   const [isFinishing, setIsFinishing] = useState(false)
 
-  // ── Refs ──────────────────────────────────────────────────────────────────
+  
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const polylineRef = useRef<any>(null)
@@ -47,7 +47,7 @@ export default function RecordClient() {
     }
   }, [activityType, router])
 
-  // ── Elapsed timer ─────────────────────────────────────────────────────────
+  
   useEffect(() => {
     timerRef.current = setInterval(() => {
       setElapsedMs(getElapsedMs(startTime, pausedDuration, pauseStartTime))
@@ -57,7 +57,7 @@ export default function RecordClient() {
     }
   }, [startTime, pausedDuration, pauseStartTime])
 
-  // ── Leaflet map init ──────────────────────────────────────────────────────
+  
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return
 
@@ -213,13 +213,13 @@ export default function RecordClient() {
     }
   }, [startGpsWatch, stopGpsWatch])
 
-  // ── Finalizar Atividade (CORRIGIDO PARA NÃO BUGAR A TELA) ───────────────
+  
   function handleStop() {
-    // 1. Esconde o modal e exibe o estado de finalização instantaneamente
+    
     setShowStopModal(false)
     setIsFinishing(true)
 
-    // 🚀 FORÇA BRUTA DEFINITIVA: Destruição do Leaflet da memória e DOM
+    
     if (mapRef.current) {
       try { mapRef.current.remove() } catch (e) {}
       mapRef.current = null
@@ -270,7 +270,7 @@ export default function RecordClient() {
   return (
     <div className="min-h-screen flex flex-col font-[family-name:var(--font-dm)] select-none relative" style={{ background: '#080808' }}>
       
-      {/* 🚀 OVERLAY DE TRANSIÇÃO (SALVANDO ATIVIDADE) */}
+      {}
       {isFinishing && (
         <div className="absolute inset-0 z-[9999] flex flex-col items-center justify-center bg-[#080808]">
           <div className="w-16 h-16 rounded-full animate-spin mb-6" style={{ border: '4px solid rgba(255,255,255,0.05)', borderTop: '4px solid #E05300' }} />
@@ -279,7 +279,7 @@ export default function RecordClient() {
         </div>
       )}
 
-      {/* Modal de Confirmação */}
+      {}
       {showStopModal && !isFinishing && (
         <div className="absolute inset-0 z-[100] flex items-center justify-center px-6 bg-black/80 backdrop-blur-sm">
           <div className="bg-[#1A1A1A] border border-white/10 rounded-3xl p-6 w-full max-w-sm shadow-2xl">
@@ -308,7 +308,7 @@ export default function RecordClient() {
         </div>
       )}
 
-      {/* Auto-pause banner */}
+      {}
       {autoPauseWarning && !isFinishing && (
         <div className="absolute top-14 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-full flex items-center gap-2 shadow-xl"
           style={{ background: '#1A1A1A', border: '1px solid rgba(255,255,255,0.1)' }}>
@@ -317,7 +317,7 @@ export default function RecordClient() {
         </div>
       )}
 
-      {/* ── Top bar ─────────────────────────────────────────────────────── */}
+      {}
       <div className="flex items-center justify-between px-5 pt-12 pb-4">
         <div className="flex items-center gap-2">
           <span className="text-2xl">{meta?.emoji}</span>
@@ -386,7 +386,7 @@ export default function RecordClient() {
         ))}
       </div>
 
-      {/* ── Live map ───────────────────────────────────────────────────── */}
+      {}
       <div className="flex-1 mx-5 rounded-3xl overflow-hidden relative" style={{ minHeight: 200 }}>
         <div id="map-container-record" ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
 
@@ -425,7 +425,7 @@ export default function RecordClient() {
         />
       </div>
 
-      {/* ── Controls ───────────────────────────────────────────────────── */}
+      {}
       <div className="px-5 pt-6 pb-12 flex items-center justify-center gap-8">
         <div className="relative flex items-center justify-center">
           <button

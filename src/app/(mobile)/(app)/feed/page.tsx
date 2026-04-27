@@ -80,7 +80,7 @@ export default function FeedPage() {
         if (!res.ok) throw new Error(`Erro API: ${res.status}`)
           
         const data = await res.json()
-        // FIX: Garante que likesCount e commentsCount são sempre números
+        
         const officialRoutes = Array.isArray(data)
           ? data
               .filter((i: any) => i.routeId !== null)
@@ -101,7 +101,7 @@ export default function FeedPage() {
     load()
   }, [router, supabase])
 
-  // Busca com Debounce
+  
   useEffect(() => {
     if (searchQuery.trim().length < 2) {
       setSearchResults([])
@@ -141,7 +141,7 @@ export default function FeedPage() {
     return `${Math.floor(hours / 24)}d atrás`
   }
 
-  // FIX: toggleLike reescrito para expor erros reais e usar token sempre fresco
+  
   async function toggleLike(sessionId: string, currentLiked: boolean) {
     const { data: { session }, error } = await supabase.auth.getSession()
     
@@ -151,7 +151,7 @@ export default function FeedPage() {
       return
     }
 
-    // Atualização otimista
+    
     setFeed(prev => prev.map(item =>
       item.id === sessionId
         ? { 
@@ -172,27 +172,27 @@ export default function FeedPage() {
       })
       
       if (!res.ok) {
-        // FIX: Lê o corpo do erro para debug real
+        
         const body = await res.json().catch(() => ({}))
         console.error("Erro ao curtir:", res.status, body)
         throw new Error(`Status ${res.status}: ${body?.error ?? 'Erro desconhecido'}`)
       }
 
-      // FIX: Usa o valor retornado pela API para garantir sincronia
+      
       const result = await res.json()
       setFeed(prev => prev.map(item =>
         item.id === sessionId
           ? { 
               ...item, 
               hasLiked: result.liked,
-              // Se a API retornar o novo total, usa. Senão mantém o otimista.
+              
               likesCount: result.likesCount != null ? Number(result.likesCount) : item.likesCount
             }
           : item
       ))
     } catch (e: any) {
       console.error("Erro ao curtir:", e)
-      // Reverte o visual
+      
       setFeed(prev => prev.map(item =>
         item.id === sessionId
           ? { 
@@ -327,7 +327,7 @@ export default function FeedPage() {
         </div>
       )}
 
-      {/* Header */}
+      {}
       <div className="relative overflow-hidden px-6 pt-12 pb-8" 
         style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
         
@@ -363,7 +363,7 @@ export default function FeedPage() {
         </div>
       </div>
 
-      {/* Resultados da Pesquisa */}
+      {}
       {searchQuery.trim().length >= 2 && (
         <div className="absolute left-6 right-6 z-[60] mt-[-10px] bg-white rounded-[24px] shadow-2xl border border-gray-100 overflow-hidden max-h-80 overflow-y-auto animate-in fade-in slide-in-from-top-4 duration-300">
           {searchResults.length > 0 ? (

@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
     
-    // 👇 PEGAR O TOKEN DO HEADER COMO FIZEMOS ANTES
+    
     const authHeader = req.headers.get('Authorization')
     const token = authHeader?.replace('Bearer ', '')
 
@@ -43,13 +43,13 @@ export async function POST(req: NextRequest) {
       totalDistanceKm: body.distanceKm?.toString() || '0'
     })
 
-    // 2. Salva todos os Check-ins vinculados à sessão acima
+    
     for (const c of body.checkins) {
       await db.insert(checkins).values({
         localId: uuidv4(),
-        userId: dbUser.id, // <-- CORREÇÃO AQUI TAMBÉM
+        userId: dbUser.id, 
         waypointId: c.waypointId,
-        routeSessionId: newSessionId, // Vincula corretamente a sessão que acabou de ser criada
+        routeSessionId: newSessionId, 
         capturedLatitude: c.lat.toString(),
         capturedLongitude: c.lng.toString(),
         distanceFromWaypointMeters: c.distance.toString(),
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // 3. Libera a Insígnia (Badge)
+    
     const routeBadges = await db.select().from(badges).where(eq(badges.routeId, body.routeId))
     
     if (routeBadges.length > 0) {
@@ -68,14 +68,14 @@ export async function POST(req: NextRequest) {
       const existingUserBadge = await db.select().from(userBadges)
         .where(
           and(
-            eq(userBadges.userId, dbUser.id), // <-- E AQUI!
+            eq(userBadges.userId, dbUser.id), 
             eq(userBadges.badgeId, badgeToGive.id)
           )
         )
 
       if (existingUserBadge.length === 0) {
         await db.insert(userBadges).values({
-          userId: dbUser.id, // <-- E AQUI!
+          userId: dbUser.id, 
           badgeId: badgeToGive.id,
           routeSessionId: newSessionId
         })

@@ -1,4 +1,4 @@
-// src/app/api/profile/[id]/follow/route.ts
+
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db/remote/client'
 import { users, followers, notifications } from '@/lib/db/remote/schema'
@@ -13,15 +13,15 @@ export async function POST(
     const resolvedParams = await params
     const targetUserId = resolvedParams.id
 
-    // Pega o token pelo Header — funciona tanto no web quanto no Capacitor
+    
     const authHeader = request.headers.get('Authorization')
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
     const token = authHeader.split(' ')[1]
 
-    // USA O CLIENTE DO SERVIDOR (não o createBrowserClient) com o token explícito
-    // Isso garante que o token do Capacitor seja validado corretamente no servidor
+    
+    
     const supabase = createSupabaseServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -46,7 +46,7 @@ export async function POST(
       return NextResponse.json({ error: 'Você não pode seguir a si mesmo' }, { status: 400 })
     }
 
-    // Verifica o alvo existe
+    
     const [target] = await db
       .select({ id: users.id })
       .from(users)
@@ -57,7 +57,7 @@ export async function POST(
       return NextResponse.json({ error: 'Usuário alvo não encontrado' }, { status: 404 })
     }
 
-    // Busca TODOS os registros existentes (pode haver duplicatas por bug anterior)
+    
     const existingFollows = await db
       .select({ id: followers.id })
       .from(followers)
@@ -69,7 +69,7 @@ export async function POST(
       )
 
     if (existingFollows.length > 0) {
-      // DEIXAR DE SEGUIR — deleta todos os registros duplicados de uma vez
+      
       await db.delete(followers).where(
         and(
           eq(followers.followerId, me.id),
@@ -77,7 +77,7 @@ export async function POST(
         )
       )
 
-      // Remove notificações associadas
+      
       await db.delete(notifications).where(
         and(
           eq(notifications.userId, targetUserId),
@@ -88,13 +88,13 @@ export async function POST(
 
       return NextResponse.json({ isFollowing: false })
     } else {
-      // SEGUIR — insere um único registro
+      
       await db.insert(followers).values({
         followerId: me.id,
         followingId: targetUserId,
       })
 
-      // Cria notificação para o usuário que foi seguido
+      
       await db.insert(notifications).values({
         userId: targetUserId,
         actorId: me.id,
