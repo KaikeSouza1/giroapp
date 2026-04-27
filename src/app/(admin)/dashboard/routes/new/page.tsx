@@ -54,16 +54,14 @@ function decodePolyline(str: string, precision = 5): [number, number][] {
   return coordinates
 }
 
-// ── Config por tipo de rota ────────────────────────────────────────────────
-// O servidor público router.project-osrm.org só suporta "driving".
-// Para foot e bike usamos routed-foot / routed-bike no mesmo host.
-// Velocidade média (km/h) usada para estimar tempo na linha reta.
-const routeConfig: Record<string, { osrmService: string; speedKmh: number; label: string }> = {
-  caminhada:   { osrmService: 'routed-foot',  speedKmh: 5,   label: 'a pé' },
-  cicloturismo:{ osrmService: 'routed-bike',  speedKmh: 15,  label: 'de bike' },
-  '4x4':       { osrmService: 'routed-car',   speedKmh: 40,  label: 'de 4x4' },
-  moto:        { osrmService: 'routed-car',   speedKmh: 50,  label: 'de moto' },
-  outros:      { osrmService: 'routed-foot',  speedKmh: 5,   label: 'a pé' },
+// ── CORREÇÃO: Config por tipo de rota (Perfis oficiais do OSRM) ────────────
+// O servidor público router.project-osrm.org suporta 'foot', 'bike' e 'driving'.
+const routeConfig: Record<string, { osrmProfile: string; speedKmh: number; label: string }> = {
+  caminhada:   { osrmProfile: 'foot',    speedKmh: 5,   label: 'a pé' },
+  cicloturismo:{ osrmProfile: 'bike',    speedKmh: 15,  label: 'de bike' },
+  '4x4':       { osrmProfile: 'driving', speedKmh: 40,  label: 'de 4x4' },
+  moto:        { osrmProfile: 'driving', speedKmh: 50,  label: 'de moto' },
+  outros:      { osrmProfile: 'foot',    speedKmh: 5,   label: 'a pé' },
 }
 
 export default function NewRoutePage() {
@@ -95,7 +93,7 @@ export default function NewRoutePage() {
   const [userRole, setUserRole] = useState<string>('')
   const [organizations, setOrganizations] = useState<Organization[]>([])
 
-  // ── NOVO: Estado de Roteamento ─────────────────────────────────────────
+  // ── Estado de Roteamento ─────────────────────────────────────────
   const [followRoads, setFollowRoads] = useState(true)
   const [isRouting, setIsRouting] = useState(false)
   const [routeError, setRouteError] = useState('')
@@ -194,7 +192,7 @@ export default function NewRoutePage() {
     updateMarkers()
   }, [waypoints, mapReady])
 
-  // ── NOVO: Função de Roteamento OSRM ──────────────────────────────────
+  // ── CORREÇÃO: Função de Roteamento OSRM Corrigida ──────────────────────
   const fetchOSRMRoute = useCallback(
     async (wps: Waypoint[], type: string) => {
       if (wps.length < 2 || !mapRef.current) return
@@ -204,7 +202,6 @@ export default function NewRoutePage() {
 
       const L = (await import('leaflet')).default
 
-      // Remove rotas anteriores
       if (routeLayerRef.current) {
         routeLayerRef.current.remove()
         routeLayerRef.current = null
@@ -217,9 +214,9 @@ export default function NewRoutePage() {
       try {
         const config = routeConfig[type] || routeConfig['caminhada']
         const coords = wps.map((wp) => `${wp.longitude},${wp.latitude}`).join(';')
-        // Cada serviço (routed-foot / routed-bike / routed-car) tem seu próprio
-        // subdomínio no servidor público do OSRM com o perfil correto.
-        const url = `https://${config.osrmService}.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=polyline`
+        
+        // URL Corrigida: Usando router.project-osrm.org e mudando apenas o profile (foot/bike/driving)
+        const url = `https://router.project-osrm.org/route/v1/${config.osrmProfile}/${coords}?overview=full&geometries=polyline`
 
         const res = await fetch(url)
         const data = await res.json()
@@ -232,7 +229,6 @@ export default function NewRoutePage() {
         const geometry = route.geometry
         const latlngs = decodePolyline(geometry)
 
-        // Distância e duração
         const distKm = (route.distance / 1000).toFixed(2)
         const durationMin = Math.round(route.duration / 60).toString()
 
@@ -242,7 +238,6 @@ export default function NewRoutePage() {
           estimatedMinutes: durationMin,
         }))
 
-        // Desenha a polyline
         const polyline = L.polyline(latlngs, {
           color: '#E05300',
           weight: 5,
@@ -252,7 +247,6 @@ export default function NewRoutePage() {
           lineCap: 'round',
         })
 
-        // Sombra (efeito premium)
         const shadow = L.polyline(latlngs, {
           color: '#830200',
           weight: 9,
@@ -265,7 +259,6 @@ export default function NewRoutePage() {
         polyline.addTo(mapRef.current)
         routeLayerRef.current = polyline
 
-        // Mantém referência da sombra para remover depois
         const origRemove = polyline.remove.bind(polyline)
         ;(polyline as any)._shadow = shadow
         polyline.remove = () => {
@@ -282,7 +275,6 @@ export default function NewRoutePage() {
     []
   )
 
-  // ── NOVO: Linha reta entre waypoints ─────────────────────────────────
   const drawStraightLines = useCallback(async (wps: Waypoint[], type: string) => {
     if (!mapRef.current) return
     const L = (await import('leaflet')).default
@@ -310,7 +302,6 @@ export default function NewRoutePage() {
     line.addTo(mapRef.current)
     straightLayerRef.current = line
 
-    // Distância em linha reta
     let totalDist = 0
     for (let i = 0; i < wps.length - 1; i++) {
       const from = L.latLng(wps[i].latitude, wps[i].longitude)
@@ -318,17 +309,14 @@ export default function NewRoutePage() {
       totalDist += from.distanceTo(to)
     }
     const distKm = (totalDist / 1000).toFixed(2)
-    // Velocidade correta por tipo de atividade
     const config = routeConfig[type] || routeConfig['caminhada']
     const durationMin = Math.round((totalDist / 1000 / config.speedKmh) * 60).toString()
     setForm((prev) => ({ ...prev, distanceKm: distKm, estimatedMinutes: durationMin }))
   }, [])
 
-  // ── NOVO: Dispara roteamento sempre que waypoints ou modo muda ────────
   useEffect(() => {
     if (!mapReady) return
     if (waypoints.length < 2) {
-      // Limpa rotas se menos de 2 pontos
       if (routeLayerRef.current) { routeLayerRef.current.remove(); routeLayerRef.current = null }
       if (straightLayerRef.current) { straightLayerRef.current.remove(); straightLayerRef.current = null }
       return
@@ -340,7 +328,6 @@ export default function NewRoutePage() {
     }
   }, [waypoints, followRoads, form.type, mapReady, fetchOSRMRoute, drawStraightLines])
 
-  // ── Busca geral no mapa ───────────────────────────────────────────────
   async function handleSearchMap(e: React.FormEvent) {
     e.preventDefault()
     if (!searchQuery.trim() || !mapRef.current) return
@@ -358,7 +345,6 @@ export default function NewRoutePage() {
     finally { setIsSearchingMap(false) }
   }
 
-  // ── Busca e adiciona waypoint ─────────────────────────────────────────
   async function handleSearchAndAddWaypoint(e: React.FormEvent) {
     e.preventDefault()
     if (!wpSearchQuery.trim() || !mapRef.current) return
@@ -621,7 +607,6 @@ export default function NewRoutePage() {
                     </div>
                   </div>
 
-                  {/* ── NOVO: Switch Seguir Estradas ───────────────────────── */}
                   <div
                     className="flex items-center justify-between px-4 py-3 rounded-2xl border transition-all"
                     style={{
@@ -705,7 +690,6 @@ export default function NewRoutePage() {
                     </div>
                   </div>
 
-                  {/* Feedback de erro de roteamento */}
                   {routeError && (
                     <div className="rounded-xl px-4 py-3 bg-amber-50 border border-amber-100 flex items-start gap-2">
                       <span className="text-amber-500 text-sm mt-0.5">⚠️</span>
@@ -713,7 +697,6 @@ export default function NewRoutePage() {
                     </div>
                   )}
 
-                  {/* Badge de status da rota */}
                   {waypoints.length >= 2 && (
                     <div
                       className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold"
@@ -821,7 +804,6 @@ export default function NewRoutePage() {
             </div>
           </div>
 
-          {/* Mapa + Barra de Busca Geral */}
           <div className="flex-1 relative z-0">
             <div className="absolute top-4 left-6 right-6 z-[400] pointer-events-none flex justify-center">
               <form
@@ -848,7 +830,6 @@ export default function NewRoutePage() {
               </form>
             </div>
 
-            {/* Badge flutuante de modo ativo */}
             <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[400]">
               <div
                 className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold shadow-lg backdrop-blur-md border pointer-events-none"
