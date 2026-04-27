@@ -21,8 +21,6 @@ type FeedItem = {
   completedAt: string
   waypointCount: number
   distanceKm: string | null
-  
-  // ADICIONADOS PARA NÃO DAR ERRO DE TYPE
   likesCount: number
   commentsCount: number
   hasLiked: boolean
@@ -51,13 +49,14 @@ export default function FeedPage() {
   const [isSearching, setIsSearching] = useState(false)
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-  // ── ESTADOS DOS COMENTÁRIOS QUE FALTAVAM ──
+  // Estados de comentários
   const [activeCommentSession, setActiveCommentSession] = useState<string | null>(null)
   const [comments, setComments] = useState<Comment[]>([])
   const [newCommentText, setNewCommentText] = useState('')
   const [loadingComments, setLoadingComments] = useState(false)
   const [submittingComment, setSubmittingComment] = useState(false)
 
+  // Instância do Supabase
   const [supabase] = useState(() => createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -65,15 +64,23 @@ export default function FeedPage() {
 
   useEffect(() => {
     async function load() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login'); return }
+      const { data: { session }, error } = await supabase.auth.getSession()
+      
+      // Se houver erro de token ou não tiver sessão, manda pro login
+      if (error || !session) { 
+        console.error("Erro de sessão no carregamento:", error);
+        router.push('/login'); 
+        return; 
+      }
 
       try {
         const res = await fetch('/api/feed', { 
           headers: { Authorization: `Bearer ${session.access_token}` } 
         })
+        
+        if (!res.ok) throw new Error(`Erro API: ${res.status}`)
+          
         const data = await res.json()
-        // Filtra para mostrar apenas rotas oficiais concluídas (ignora treinos)
         const officialRoutes = Array.isArray(data) ? data.filter((i: any) => i.routeId !== null) : []
         setFeed(officialRoutes)
       } catch (err) {
@@ -85,7 +92,7 @@ export default function FeedPage() {
     load()
   }, [router, supabase.auth])
 
-  // Lógica de Busca com Debounce
+  // Busca com Debounce
   useEffect(() => {
     if (searchQuery.trim().length < 2) {
       setSearchResults([])
@@ -99,8 +106,10 @@ export default function FeedPage() {
     searchTimeoutRef.current = setTimeout(async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession()
+        if (!session) return;
+        
         const res = await fetch(`/api/users/search?q=${encodeURIComponent(searchQuery)}`, {
-          headers: { Authorization: `Bearer ${session?.access_token}` }
+          headers: { Authorization: `Bearer ${session.access_token}` }
         })
         const data = await res.json()
         setSearchResults(Array.isArray(data) ? data : [])
@@ -123,44 +132,67 @@ export default function FeedPage() {
     return `${Math.floor(hours / 24)}d atrás`
   }
 
-  // 🔥 FUNÇÃO DE LIKE CORRIGIDA (Enviando o Token de Autorização)
+  // 🔥 LIKE COM VERIFICAÇÃO DE SESSÃO RÍGIDA
   async function toggleLike(sessionId: string, currentLiked: boolean) {
-    const { data: { session } } = await supabase.auth.getSession()
-    const token = session?.access_token
+    const { data: { session }, error } = await supabase.auth.getSession()
+    
+    // Se a sessão estiver bugada, avisa o usuário e aborta
+    if (error || !session) {
+      alert("Sua sessão expirou! Por favor, saia do app e faça login novamente.")
+      return
+    }
 
+    const token = session.access_token
+
+    // Atualização Otimista no Visual
     setFeed(prev => prev.map(item => {
       if (item.id === sessionId) {
-        return { ...item, hasLiked: !currentLiked, likesCount: currentLiked ? Math.max(0, item.likesCount - 1) : item.likesCount + 1 }
+        return { 
+          ...item, 
+          hasLiked: !currentLiked, 
+          likesCount: currentLiked ? Math.max(0, item.likesCount - 1) : item.likesCount + 1 
+        }
       }
       return item
     }))
+
     try {
       const res = await fetch(`/api/feed/${sessionId}/like`, { 
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}` // Correção principal
-        }
+        headers: { 'Authorization': `Bearer ${token}` }
       })
-      if (!res.ok) throw new Error("Erro da API")
+      
+      if (!res.ok) throw new Error("Erro da API ao curtir")
     } catch (e) {
       console.error("Erro ao curtir", e)
+      alert("Não foi possível curtir a publicação.")
+      
+      // Reverte o visual em caso de falha
       setFeed(prev => prev.map(item => {
         if (item.id === sessionId) {
-          return { ...item, hasLiked: currentLiked, likesCount: currentLiked ? item.likesCount + 1 : Math.max(0, item.likesCount - 1) }
+          return { 
+            ...item, 
+            hasLiked: currentLiked, 
+            likesCount: currentLiked ? item.likesCount + 1 : Math.max(0, item.likesCount - 1) 
+          }
         }
         return item
       }))
     }
   }
 
-  // 🔥 ABRIR COMENTÁRIOS E CARREGAR DA API
+  // 🔥 COMENTÁRIOS COM VERIFICAÇÃO RÍGIDA
   async function openComments(sessionId: string) {
     setActiveCommentSession(sessionId)
     setLoadingComments(true)
     setComments([])
     try {
-      const res = await fetch(`/api/feed/${sessionId}/comments`)
-      if (!res.ok) throw new Error("Ficheiro de API não encontrado (404)")
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      const res = await fetch(`/api/feed/${sessionId}/comments`, {
+        headers: session ? { 'Authorization': `Bearer ${session.access_token}` } : {}
+      })
+      if (!res.ok) throw new Error("Erro ao buscar comentários")
       const data = await res.json()
       setComments(Array.isArray(data) ? data : [])
     } catch (e) {
@@ -170,38 +202,45 @@ export default function FeedPage() {
     }
   }
 
-  // 🔥 ENVIAR NOVO COMENTÁRIO CORRIGIDO (Enviando o Token)
   async function submitComment() {
     if (!newCommentText.trim() || !activeCommentSession) return
-    setSubmittingComment(true)
     
-    const { data: { session } } = await supabase.auth.getSession()
-    const token = session?.access_token
+    const { data: { session }, error } = await supabase.auth.getSession()
+    
+    if (error || !session) {
+      alert("Sua sessão expirou! Por favor, saia do app e faça login novamente.")
+      return
+    }
+
+    setSubmittingComment(true)
+    const token = session.access_token
 
     try {
       const res = await fetch(`/api/feed/${activeCommentSession}/comments`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` // Correção principal
+          'Authorization': `Bearer ${token}` 
         },
         body: JSON.stringify({ content: newCommentText })
       })
+      
       if (!res.ok) throw new Error("Erro ao salvar comentário")
       
       const newComment = await res.json()
       setComments(prev => [...prev, newComment])
       setNewCommentText('')
       
+      // Atualiza o contador no Feed principal instantaneamente
       setFeed(prev => prev.map(item => {
         if (item.id === activeCommentSession) {
-          // Garante que é número e soma
           return { ...item, commentsCount: Number(item.commentsCount) + 1 }
         }
         return item
       }))
     } catch (e) {
-      console.error(e)
+      console.error("Erro ao enviar comentário", e)
+      alert("Erro ao enviar comentário. Tente novamente.")
     } finally {
       setSubmittingComment(false)
     }
@@ -228,10 +267,10 @@ export default function FeedPage() {
               ) : (
                 comments.map(c => (
                   <div key={c.id} className="flex gap-3">
-                    <img src={c.user.avatarUrl || ''} className="w-9 h-9 rounded-xl object-cover border border-gray-100 shadow-sm" />
+                    <img src={c.user?.avatarUrl || ''} className="w-9 h-9 rounded-xl object-cover border border-gray-100 shadow-sm" />
                     <div className="flex-1 bg-gray-50 rounded-2xl rounded-tl-none p-3.5 border border-gray-100">
                       <div className="flex justify-between items-end mb-1">
-                        <p className="text-[12px] font-black text-gray-900">{c.user.displayName}</p>
+                        <p className="text-[12px] font-black text-gray-900">{c.user?.displayName || 'Usuário'}</p>
                         <span className="text-[9px] text-gray-400 font-bold">{timeAgo(c.createdAt)}</span>
                       </div>
                       <p className="text-sm text-gray-700 leading-snug">{c.content}</p>
