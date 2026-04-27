@@ -44,7 +44,9 @@ function GiroBadgeSVG({ name }: { name: string }) {
   if (name === 'Lenda') return (
     <svg width="60" height="60" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="url(#p3)" stroke="#fff" strokeWidth="3"/><text x="50" y="65" textAnchor="middle" fill="#fff" fontSize="40" fontWeight="900">G</text><defs><linearGradient id="p3" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#FFD700"/><stop offset="100%" stopColor="#E05300"/></linearGradient></defs></svg>
   )
-  return <div className="text-3xl">G</div>
+  return (
+    <svg width="60" height="60" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="url(#p4)" stroke="#fff" strokeWidth="3"/><text x="50" y="65" textAnchor="middle" fill="#fff" fontSize="40" fontWeight="900">G</text><defs><linearGradient id="p4" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#FF8C00"/><stop offset="100%" stopColor="#830200"/></linearGradient></defs></svg>
+  )
 }
 
 type Badge = {
@@ -148,13 +150,13 @@ export default function ProfilePage() {
     return m > 0 ? `${h}h ${m}m` : `${h}h`
   }
 
-  // COMPARTILHAMENTO NATIVO (COM IMAGENS)
+  // ── COMPARTILHAMENTO NATIVO (TEXTO SÉRIO + IMAGENS REAIS) ───────────
   async function handleNativeShare() {
     if (!routeToShare) return
     setIsPreparingShare(true)
     
     try {
-      const text = `Registro de atividade:\nRota: "${routeToShare.routeName}"\nDistância: ${routeToShare.distanceKm || '--'} km\nTempo: ${formatTime(routeToShare.elapsedMinutes)}`
+      const text = `REGISTRO DE ATIVIDADE\nRota: ${routeToShare.routeName}\nDistância: ${routeToShare.distanceKm || '--'} km\nTempo: ${formatTime(routeToShare.elapsedMinutes)}\n\nRastreamento via GIRO APP.`
       
       const filesPromise = routeToShare.photos.slice(0, 3).map(url => urlToBase64(url))
       const base64Files = await Promise.all(filesPromise)
@@ -176,7 +178,7 @@ export default function ProfilePage() {
     }
   }
 
-  // COMPARTILHAMENTO SMS (CÁLCULO DE PACE)
+  // ── COMPARTILHAMENTO SMS (CÁLCULO DE PACE + TEXTO PROFISSIONAL) ──────
   function handleSmsShare() {
     if (!routeToShare || !smsPhone.trim()) return
     
@@ -193,7 +195,7 @@ export default function ProfilePage() {
       }
     }
 
-    const text = `REGISTRO DE ATIVIDADE - GIRO APP\n\nRota: ${routeToShare.routeName}\nDistância: ${routeToShare.distanceKm || '--'} km\nTempo total: ${formatTime(routeToShare.elapsedMinutes)}\nRitmo Médio (Pace): ${paceString}\n\nAcesse: https://giroapp.vercel.app`
+    const text = `REGISTRO DE ATIVIDADE - GIRO\n\nRota: ${routeToShare.routeName}\nDistância: ${routeToShare.distanceKm || '--'} km\nTempo total: ${formatTime(routeToShare.elapsedMinutes)}\nRitmo Médio (Pace): ${paceString}\n\nApp: https://giroapp.vercel.app`
     
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
     const separator = isIOS ? '&' : '?'
@@ -277,9 +279,9 @@ export default function ProfilePage() {
 
   const getTypeInfo = (type: string) => {
     switch (type) {
-      case 'caminhada': return { label: 'Caminhada', color: 'bg-gray-100 text-gray-700' }
-      case 'cicloturismo': return { label: 'Ciclismo', color: 'bg-gray-100 text-gray-700' }
-      default: return { label: 'Rota', color: 'bg-gray-100 text-gray-700' }
+      case 'caminhada': return { label: 'Caminhada', color: 'bg-orange-100 text-orange-800' }
+      case 'cicloturismo': return { label: 'Ciclismo', color: 'bg-red-100 text-red-800' }
+      default: return { label: 'Rota', color: 'bg-gray-100 text-gray-800' }
     }
   }
 
@@ -311,35 +313,36 @@ export default function ProfilePage() {
           <div className="bg-white rounded-t-3xl p-6 pb-12 flex flex-col gap-3 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-4" />
             <h3 className="text-lg font-black text-gray-900 mb-2 text-center">Atualizar Imagem</h3>
-            <button onClick={() => takeProfilePicture(CameraSource.Camera)} className="w-full py-4 rounded-2xl text-white font-black text-base shadow-sm" style={{ background: '#E05300' }}>Câmera</button>
+            <button onClick={() => takeProfilePicture(CameraSource.Camera)} className="w-full py-4 rounded-2xl text-white font-black text-base shadow-sm" style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}>Câmera</button>
             <button onClick={() => takeProfilePicture(CameraSource.Photos)} className="w-full py-4 rounded-2xl font-bold text-base border" style={{ borderColor: '#EFEFEF', color: '#333', background: '#FFF' }}>Galeria</button>
             <button onClick={() => setIsAvatarModalOpen(false)} className="w-full py-3 mt-2 rounded-2xl font-bold text-sm text-gray-400">Cancelar</button>
           </div>
         </div>
       )}
 
-      {/* Modal de Compartilhamento Limpo e Funcional */}
+      {/* Modal de Compartilhamento Premium (Laranja) */}
       {isShareModalOpen && routeToShare && (
         <div className="fixed inset-0 z-[150] flex flex-col justify-end bg-black/60 backdrop-blur-sm" onClick={() => setIsShareModalOpen(false)}>
           <div className="bg-white rounded-t-[32px] p-6 pb-12 flex flex-col gap-5 shadow-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-1 flex-shrink-0" />
-            <h3 className="text-xl font-black text-gray-900 flex-shrink-0 text-center">Compartilhar Dados</h3>
+            <h3 className="text-xl font-black text-gray-900 flex-shrink-0 text-center">Compartilhar Desempenho</h3>
             
-            <div className="bg-gray-50 border border-gray-100 rounded-2xl p-5 flex-shrink-0">
-               <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 block">Enviar via SMS Direto</label>
+            {/* Box SMS */}
+            <div className="bg-orange-50 border border-orange-100 rounded-2xl p-5 flex-shrink-0">
+               <label className="text-[10px] font-black text-orange-800 uppercase tracking-widest mb-2 block">Relatório via SMS</label>
                <div className="flex gap-2">
                  <input 
                    type="tel" 
-                   placeholder="Número (DDD + Telefone)"
+                   placeholder="DDD + Telefone"
                    value={smsPhone}
                    onChange={e => setSmsPhone(e.target.value)}
-                   className="flex-1 px-4 py-3.5 rounded-xl text-sm font-bold text-gray-800 bg-white border border-gray-200 outline-none focus:border-gray-400 transition-colors"
+                   className="flex-1 px-4 py-3.5 rounded-xl text-sm font-bold text-gray-800 bg-white border border-gray-200 outline-none focus:border-orange-500 transition-colors"
                  />
                  <button 
                    onClick={handleSmsShare}
                    disabled={!smsPhone.trim()}
                    className="px-6 py-3.5 rounded-xl text-white font-black text-sm transition-all disabled:opacity-50"
-                   style={{ background: '#333' }}
+                   style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}
                  >
                    Enviar
                  </button>
@@ -348,62 +351,85 @@ export default function ProfilePage() {
 
             <div className="flex items-center gap-4 my-1 flex-shrink-0">
               <div className="flex-1 h-px bg-gray-100" />
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Opções do Sistema</span>
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Geral</span>
               <div className="flex-1 h-px bg-gray-100" />
             </div>
 
+            {/* Box Nativo */}
             <button 
               onClick={handleNativeShare} 
               disabled={isPreparingShare}
-              className="w-full py-4 flex flex-shrink-0 items-center justify-center gap-2 rounded-2xl font-bold text-base border transition-all active:scale-95 disabled:opacity-50" 
-              style={{ borderColor: '#EFEFEF', color: '#fff', background: '#E05300' }}
+              className="w-full py-4 flex flex-shrink-0 items-center justify-center gap-2 rounded-2xl font-bold text-base transition-all active:scale-95 disabled:opacity-50 text-white shadow-md" 
+              style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}
             >
               {isPreparingShare ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
-                'Compartilhamento Nativo'
+                'Instagram, WhatsApp e Redes'
               )}
             </button>
           </div>
         </div>
       )}
 
-      {/* Header Profile */}
-      <div className="relative overflow-hidden px-6 pt-12 pb-12 bg-white border-b border-gray-100">
-        <div className="relative z-10 flex items-center justify-between mb-8">
-          <NextImage src="/logogiroprincipal.png" alt="GIRO" width={80} height={32} />
-          <button onClick={handleLogout} className="text-gray-400 font-bold text-xs uppercase tracking-widest">Sair</button>
+      {/* Header Profile com Identidade GIRO (Ondas Laranjas) */}
+      <div className="relative overflow-hidden px-6 pt-12 pb-16"
+        style={{ background: 'linear-gradient(160deg, #830200 0%, #E05300 55%, #FF8C00 100%)' }}>
+        <svg className="absolute inset-0 w-full h-full opacity-[0.1]" viewBox="0 0 375 200" preserveAspectRatio="xMidYMid slice"><path d="M0,100 Q93,60 187,100 Q280,140 375,100" fill="none" stroke="#fff" strokeWidth="1.5"/></svg>
+        
+        <div className="relative z-10 flex items-center justify-between mb-6">
+          <NextImage src="/logogiroprincipal.png" alt="GIRO" width={80} height={32} priority className="drop-shadow-lg" />
+          <button onClick={handleLogout} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold" style={{ background: 'rgba(255,255,255,0.2)', color: 'white' }}>Sair</button>
         </div>
-        <div className="relative z-10 flex items-center gap-5">
-          <button onClick={() => setIsAvatarModalOpen(true)} className="relative active:scale-95 transition-transform">
+        
+        <div className="relative z-10 flex items-center gap-4">
+          <button onClick={() => setIsAvatarModalOpen(true)} className="relative rounded-2xl shadow-lg active:scale-95 group">
             {isUpdatingAvatar && <div className="absolute inset-0 bg-black/50 rounded-[28px] flex items-center justify-center z-20"><div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" /></div>}
-            <img src={profile?.avatarUrl || ''} className="w-20 h-20 rounded-[28px] object-cover border border-gray-100 shadow-sm" />
+            <div className="absolute -bottom-2 -right-2 bg-white rounded-full p-1.5 shadow-md z-10 text-orange-600">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </div>
+            <img src={profile?.avatarUrl || ''} alt="Avatar" className="w-20 h-20 rounded-[28px] object-cover border-2 border-white/40 shadow-lg" />
           </button>
-          <div className="flex-1">
-            <h1 className="text-gray-900 font-black text-2xl leading-none">{profile?.displayName}</h1>
-            <p className="text-gray-500 text-sm font-medium mt-1">@{profile?.username}</p>
+          <div>
+            <h1 className="text-white font-black text-2xl leading-tight">{profile?.displayName}</h1>
+            <p className="text-white/80 text-sm font-medium">@{profile?.username}</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-4 gap-2 mt-8">
-          {[
-            { label: 'Rotas', val: profile?.completedRoutes?.length },
-            { label: 'Insígnias', val: profile?.badges?.length },
-            { label: 'Seguidores', val: profile?.followersCount, link: 'followers' },
-            { label: 'A seguir', val: profile?.followingCount, link: 'following' }
-          ].map((s, idx) => (
-            <Link key={idx} href={s.link ? `/profile/${profile?.id}/network?tab=${s.link}` : '#'} className="bg-gray-50 rounded-2xl py-3 text-center border border-gray-100 active:bg-gray-100 transition-colors">
-              <p className="text-gray-900 font-black text-lg leading-none">{s.val ?? 0}</p>
-              <p className="text-gray-400 text-[8px] font-black uppercase mt-1 tracking-tighter">{s.label}</p>
-            </Link>
-          ))}
+        <div className="relative z-10 flex gap-2 mt-6">
+          <div className="flex-1 text-center rounded-2xl py-3 backdrop-blur-sm" style={{ background: 'rgba(255,255,255,0.15)' }}>
+            <p className="text-white font-black text-xl leading-none">{profile?.completedRoutes?.length ?? 0}</p>
+            <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider">Rotas</p>
+          </div>
+          <div className="flex-1 text-center rounded-2xl py-3 backdrop-blur-sm" style={{ background: 'rgba(255,255,255,0.15)' }}>
+            <p className="text-white font-black text-xl leading-none">{profile?.badges?.length ?? 0}</p>
+            <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider">Insígnias</p>
+          </div>
+          {profile?.id && (
+            <>
+              <Link href={`/profile/${profile.id}/network?tab=followers`} className="flex-1 text-center rounded-2xl py-3 backdrop-blur-sm active:scale-95 transition-transform" style={{ background: 'rgba(255,255,255,0.15)' }}>
+                <p className="text-white font-black text-xl leading-none">{profile.followersCount}</p>
+                <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider">Seguidores</p>
+              </Link>
+              <Link href={`/profile/${profile.id}/network?tab=following`} className="flex-1 text-center rounded-2xl py-3 backdrop-blur-sm active:scale-95 transition-transform" style={{ background: 'rgba(255,255,255,0.15)' }}>
+                <p className="text-white font-black text-xl leading-none">{profile.followingCount}</p>
+                <p className="text-white/70 text-[9px] font-bold uppercase mt-1 tracking-wider">A seguir</p>
+              </Link>
+            </>
+          )}
         </div>
+        <div className="absolute bottom-0 left-0 right-0 h-6 bg-gray-50 rounded-t-[32px]" />
       </div>
 
       {/* Tabs */}
-      <div className="flex px-5 mt-4 mb-4 gap-2">
+      <div className="flex mx-5 mt-2 mb-4 gap-2">
         {(['routes', 'badges'] as const).map((tab) => (
-          <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-2xl transition-all border ${activeTab === tab ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-400 border-gray-100'}`}>
+          <button 
+            key={tab} 
+            onClick={() => setActiveTab(tab)} 
+            className={`flex-1 py-3.5 text-[11px] font-black uppercase tracking-widest rounded-2xl transition-all shadow-sm ${activeTab === tab ? 'text-white border-transparent' : 'bg-white text-gray-400 border border-gray-100'}`}
+            style={{ background: activeTab === tab ? 'linear-gradient(135deg, #830200, #E05300)' : undefined }}
+          >
             {tab === 'routes' ? 'Atividades' : 'Insígnias'}
           </button>
         ))}
@@ -413,26 +439,26 @@ export default function ProfilePage() {
         {activeTab === 'routes' && (
           <div className="flex flex-col gap-4">
             {profile?.completedRoutes.length === 0 ? (
-               <div className="py-12 text-center"><p className="text-gray-400 font-bold text-sm uppercase tracking-widest">Nenhuma rota concluída</p></div>
+               <div className="py-12 text-center"><p className="text-gray-400 font-bold text-sm uppercase tracking-widest">Nenhuma atividade concluída</p></div>
             ) : (
               profile?.completedRoutes.map(route => {
                 const info = getTypeInfo(route.routeType)
                 return (
-                  <div key={route.id} className="bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-100 relative">
+                  <div key={route.id} className="bg-white rounded-[28px] overflow-hidden shadow-sm border border-gray-100 relative">
                     {!route.isPublic && (
                       <div className="absolute top-4 right-4 z-10 bg-gray-900/80 backdrop-blur-sm px-2 py-1 rounded-md">
-                        <span className="text-[8px] font-black text-white uppercase tracking-widest">Privado</span>
+                        <span className="text-[8px] font-black text-white uppercase tracking-widest">Oculto</span>
                       </div>
                     )}
                     <div className="px-5 pt-5 pb-3 border-b border-gray-50">
-                      <div className={`inline-block px-2 py-1 rounded-md mb-2 ${info.color}`}><span className="text-[9px] font-bold uppercase tracking-wider">{info.label}</span></div>
+                      <div className={`inline-block px-2 py-1 rounded-md mb-2 ${info.color}`}><span className="text-[9px] font-black uppercase tracking-wider">{info.label}</span></div>
                       <h3 className="font-black text-gray-900 text-lg leading-tight">{route.routeName}</h3>
-                      <p className="text-gray-400 text-xs mt-1 font-medium">{new Date(route.completedAt).toLocaleDateString('pt-BR')}</p>
+                      <p className="text-gray-400 text-[11px] font-bold mt-1 tracking-wide">{new Date(route.completedAt).toLocaleDateString('pt-BR')}</p>
                     </div>
                     
                     <div className="grid grid-cols-2 divide-x divide-gray-50 bg-gray-50/30 py-4 border-b border-gray-50">
-                      <div className="text-center"><p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Tempo</p><p className="font-black text-gray-800 text-lg">{formatTime(route.elapsedMinutes)}</p></div>
-                      <div className="text-center"><p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Distância</p><p className="font-black text-gray-800 text-lg">{route.distanceKm} km</p></div>
+                      <div className="text-center"><p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Tempo Total</p><p className="font-black text-gray-800 text-lg">{formatTime(route.elapsedMinutes)}</p></div>
+                      <div className="text-center"><p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Distância</p><p className="font-black text-gray-800 text-lg">{route.distanceKm} km</p></div>
                     </div>
                     
                     <div className="px-5 py-4 border-b border-gray-50">
@@ -443,11 +469,15 @@ export default function ProfilePage() {
                       </div>
                     </div>
                     
-                    <div className="px-5 py-3 flex gap-2">
-                       <button onClick={() => openShareModal(route)} className="flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 bg-gray-900 text-white">
+                    <div className="px-5 py-4 flex gap-3">
+                       <button 
+                         onClick={() => openShareModal(route)} 
+                         className="flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 text-white shadow-md"
+                         style={{ background: 'linear-gradient(135deg, #830200, #E05300)' }}
+                       >
                          Compartilhar
                        </button>
-                       <button onClick={() => toggleVisibility(route.id, route.isPublic)} className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 border ${route.isPublic ? 'bg-green-50 text-green-700 border-green-100' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                       <button onClick={() => toggleVisibility(route.id, route.isPublic)} className={`px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 border ${route.isPublic ? 'bg-gray-50 text-gray-600 border-gray-200' : 'bg-gray-100 text-gray-400 border-gray-300'}`}>
                          {route.isPublic ? 'Público' : 'Oculto'}
                        </button>
                     </div>
@@ -459,7 +489,7 @@ export default function ProfilePage() {
         )}
 
         {activeTab === 'badges' && (
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4 pb-8">
             {profile?.badges.length === 0 ? (
                <div className="col-span-2 py-12 text-center">
                  <p className="text-gray-400 font-bold text-sm uppercase tracking-widest">Sem insígnias ainda</p>
