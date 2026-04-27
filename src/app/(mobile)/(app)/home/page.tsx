@@ -190,7 +190,7 @@ export default function HomePage() {
           <h1 className="text-white font-black text-2xl leading-tight">
             {user?.displayName?.split(' ')[0] ?? 'Aventureiro'} 👋
           </h1>
-          <p className="text-white/60 text-xs mt-1">Qual será a sua rota oficial de hoje?</p>
+          <p className="text-white/60 text-xs mt-1">Qual será a sua rota de hoje?</p>
         </div>
 
         <div className="relative z-10 flex gap-3 mt-6">
