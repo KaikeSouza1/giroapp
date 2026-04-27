@@ -22,7 +22,6 @@ function dataUrlToFile(dataUrl: string, filename: string): File {
   return new File([u8arr], filename, { type: mime })
 }
 
-// 🔥 DESENHO DAS MEDALHAS VIA CÓDIGO (NUNCA FALHA)
 function GiroBadgeSVG({ name }: { name: string }) {
   if (name === 'Pioneiro') return (
     <svg width="60" height="60" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="url(#p1)" stroke="#fff" strokeWidth="3"/><path d="M50 25L58 43H78L62 55L68 75L50 63L32 75L38 55L22 43H42L50 25Z" fill="#fff"/><defs><linearGradient id="p1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#CD7F32"/><stop offset="100%" stopColor="#8B4513"/></linearGradient></defs></svg>
@@ -131,37 +130,46 @@ export default function ProfilePage() {
     setIsShareModalOpen(true)
   }
 
-  // ── FUNÇÕES DE COMPARTILHAMENTO ──────────────────────────────────────────
-  async function handleNativeShare() {
+  // ── FUNÇÕES DE COMPARTILHAMENTO (CORRIGIDAS) ───────────────────────────
+  function handleNativeShare() {
     if (!routeToShare) return
-    const text = `Acabei de concluir a rota "${routeToShare.routeName}" no GIRO APP em ${formatTime(routeToShare.elapsedMinutes)}! 🚀`
     
-    try {
-      await Share.share({
-        title: 'Conquista GIRO',
-        text: text,
-        url: 'https://giroapp.vercel.app', 
-        dialogTitle: 'Compartilhe sua aventura'
-      })
-      setIsShareModalOpen(false)
-    } catch (err) {
-      console.error('Erro ao compartilhar nativamente:', err)
-    }
+    // Unifica o texto com o link (Evita bugs do Android Share Sheet)
+    const text = `Acabei de concluir a rota "${routeToShare.routeName}" no GIRO APP em ${formatTime(routeToShare.elapsedMinutes)}! 🚀\nVenha se aventurar: https://giroapp.vercel.app`
+    
+    // Fecha o modal ANTES de abrir a aba de compartilhamento para evitar que o scroll do app trave
+    setIsShareModalOpen(false)
+    
+    setTimeout(async () => {
+      try {
+        await Share.share({
+          title: 'Conquista GIRO',
+          text: text,
+          dialogTitle: 'Compartilhe sua aventura'
+        })
+      } catch (err) {
+        console.error('Erro ao compartilhar nativamente:', err)
+      }
+    }, 150)
   }
 
   function handleSmsShare() {
     if (!routeToShare || !smsPhone.trim()) return
     
-    // Remove caracteres não numéricos do telefone
     const cleanPhone = smsPhone.replace(/\D/g, '')
     const text = `Acabei de concluir a rota "${routeToShare.routeName}" no GIRO APP em ${formatTime(routeToShare.elapsedMinutes)}! Baixe o app e venha se aventurar: https://giroapp.vercel.app`
     
-    // Verificação de sistema para formatar o URI do SMS corretamente (iOS usa &body, Android usa ?body)
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
     const separator = isIOS ? '&' : '?'
     
-    window.location.href = `sms:${cleanPhone}${separator}body=${encodeURIComponent(text)}`
+    // Força o sistema operacional a tratar como App Nativo usando _system
+    const uri = `sms:${cleanPhone}${separator}body=${encodeURIComponent(text)}`
+    
     setIsShareModalOpen(false)
+    
+    setTimeout(() => {
+      window.open(uri, '_system')
+    }, 150)
   }
 
   async function toggleVisibility(sessionId: string, currentIsPublic: boolean) {
@@ -261,7 +269,7 @@ export default function ProfilePage() {
 
       {/* Modal Visualizador de Foto */}
       {isPhotoViewerOpen && selectedPhoto && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm" onClick={closePhotoViewer}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 backdrop-blur-sm" onClick={closePhotoViewer}>
           <button className="absolute top-10 right-6 z-10 w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white backdrop-blur-sm" onClick={closePhotoViewer}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
@@ -271,7 +279,7 @@ export default function ProfilePage() {
 
       {/* Modal Foto de Perfil */}
       {isAvatarModalOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60 backdrop-blur-sm" onClick={() => setIsAvatarModalOpen(false)}>
+        <div className="fixed inset-0 z-[150] flex flex-col justify-end bg-black/60 backdrop-blur-sm" onClick={() => setIsAvatarModalOpen(false)}>
           <div className="bg-white rounded-t-3xl p-6 pb-12 flex flex-col gap-3 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-4" />
             <h3 className="text-lg font-black text-gray-900 mb-2">Trocar foto de perfil</h3>
@@ -282,14 +290,15 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* ── MODAL DE COMPARTILHAMENTO ── */}
+      {/* ── MODAL DE COMPARTILHAMENTO (CORRIGIDO PARA ROLAGEM) ── */}
       {isShareModalOpen && routeToShare && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60 backdrop-blur-sm" onClick={() => setIsShareModalOpen(false)}>
-          <div className="bg-white rounded-t-3xl p-6 pb-12 flex flex-col gap-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-2" />
-            <h3 className="text-lg font-black text-gray-900">Compartilhar Conquista</h3>
+        <div className="fixed inset-0 z-[150] flex flex-col justify-end bg-black/60 backdrop-blur-sm" onClick={() => setIsShareModalOpen(false)}>
+          {/* Adicionado max-h-[85vh] e overflow-y-auto para evitar bugs quando o teclado do celular sobe */}
+          <div className="bg-white rounded-t-3xl p-6 pb-12 flex flex-col gap-4 shadow-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-2 flex-shrink-0" />
+            <h3 className="text-lg font-black text-gray-900 flex-shrink-0">Compartilhar Conquista</h3>
             
-            <div className="bg-orange-50 border border-orange-100 rounded-2xl p-4 mt-2">
+            <div className="bg-orange-50 border border-orange-100 rounded-2xl p-4 mt-2 flex-shrink-0">
                <label className="text-[10px] font-black text-orange-800 uppercase tracking-widest mb-1.5 block">Enviar via SMS</label>
                <div className="flex gap-2">
                  <input 
@@ -310,7 +319,7 @@ export default function ProfilePage() {
                </div>
             </div>
 
-            <div className="flex items-center gap-4 my-2">
+            <div className="flex items-center gap-4 my-2 flex-shrink-0">
               <div className="flex-1 h-px bg-gray-100" />
               <span className="text-[10px] font-black text-gray-400 uppercase">Ou</span>
               <div className="flex-1 h-px bg-gray-100" />
@@ -318,7 +327,7 @@ export default function ProfilePage() {
 
             <button 
               onClick={handleNativeShare} 
-              className="w-full py-4 flex items-center justify-center gap-2 rounded-2xl font-bold text-base border-2 transition-all active:scale-95" 
+              className="w-full py-4 flex flex-shrink-0 items-center justify-center gap-2 rounded-2xl font-bold text-base border-2 transition-all active:scale-95" 
               style={{ borderColor: '#EFEFEF', color: '#333', background: '#F9F9F9' }}
             >
               <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
