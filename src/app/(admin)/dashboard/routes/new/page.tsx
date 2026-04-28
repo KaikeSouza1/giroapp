@@ -626,7 +626,7 @@ export default function NewRoutePage() {
                       onChange={(e) =>
                         setForm((p) => ({ ...p, name: e.target.value }))
                       }
-                      placeholder="Ex: Trilha da Serra"
+                      placeholder=""
                       className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 placeholder-gray-400 outline-none focus:ring-2 focus:ring-orange-500/20"
                       style={inputStyle}
                     />
@@ -641,7 +641,7 @@ export default function NewRoutePage() {
                       onChange={(e) =>
                         setForm((p) => ({ ...p, description: e.target.value }))
                       }
-                      placeholder="Descreva a rota..."
+                      placeholder=""
                       rows={3}
                       className="w-full px-4 py-3 rounded-xl text-sm text-gray-800 placeholder-gray-400 outline-none resize-none focus:ring-2 focus:ring-orange-500/20"
                       style={inputStyle}
@@ -935,7 +935,7 @@ export default function NewRoutePage() {
                     >
                       <input
                         type="text"
-                        placeholder="Ex: Mirante da Pedra..."
+                        placeholder=""
                         value={wpSearchQuery}
                         onChange={(e) => setWpSearchQuery(e.target.value)}
                         className="flex-1 px-3 py-2 rounded-xl text-sm text-gray-800 outline-none border border-orange-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"

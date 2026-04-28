@@ -302,7 +302,7 @@ export default function OrganizationsPage() {
                       onChange={(e) =>
                         setFormData({ ...formData, name: e.target.value })
                       }
-                      placeholder="Ex: Prefeitura de Ituiutaba"
+                      placeholder=""
                       className="w-full px-4 py-3.5 rounded-xl text-sm text-gray-800 placeholder-gray-400 outline-none transition-all focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
                       style={{
                         background: "#F7F7F7",
@@ -327,7 +327,7 @@ export default function OrganizationsPage() {
                             .replace(/[^a-z0-9]+/g, "-"),
                         })
                       }
-                      placeholder="pref-ituiutaba"
+                      placeholder=""
                       className="w-full px-4 py-3.5 rounded-xl text-sm text-gray-800 placeholder-gray-400 outline-none transition-all focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
                       style={{
                         background: "#F7F7F7",
@@ -409,7 +409,7 @@ export default function OrganizationsPage() {
                             adminPassword: e.target.value,
                           })
                         }
-                        placeholder="Ex: Mudar@123"
+                        placeholder=""
                         className="w-full px-4 py-3.5 rounded-xl text-sm text-gray-800 placeholder-gray-400 outline-none transition-all focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
                         style={{
                           background: "#F7F7F7",
