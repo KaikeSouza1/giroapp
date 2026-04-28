@@ -1,17 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/client";
 import { db } from "@/lib/db/remote/client";
-import {
-  routeSessions,
-  routes,
-  users,
-  followers,
-  waypoints,
-  organizations,
-} from "@/lib/db/remote/schema";
-import { eq, inArray, desc, and, or, sql } from "drizzle-orm";
+import { users, followers } from "@/lib/db/remote/schema";
+import { eq, sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
 export const revalidate = 0;
 
 export async function GET(request: NextRequest) {
@@ -43,118 +37,86 @@ export async function GET(request: NextRequest) {
         .select({ followingId: followers.followingId })
         .from(followers)
         .where(eq(followers.followerId, dbUser.id));
-      const followingIds = followingList.map((f) => f.followingId);
-      targetUserIds = [...followingIds, dbUser.id];
+      targetUserIds = [...followingList.map((f) => f.followingId), dbUser.id];
     }
 
     if (targetUserIds.length === 0) return NextResponse.json([]);
 
-    const sessions = await db
-      .select({
-        sessionId: routeSessions.id,
-        userId: routeSessions.userId,
-        routeId: routeSessions.routeId,
-        completedAt: routeSessions.completedAt,
-        totalDistanceKm: routeSessions.totalDistanceKm,
-        activityType: routeSessions.activityType,
-        averagePace: routeSessions.averagePace,
-        durationSeconds: routeSessions.durationSeconds,
-        socialImageUrl: routeSessions.socialImageUrl,
-        isPublic: routeSessions.isPublic,
+    // Formata a lista de IDs para rodar seguro no SQL raw
+    const userIdsList = sql.join(
+      targetUserIds.map((id) => sql`${id}`),
+      sql`, `
+    );
 
-        likesCount: sql<number>`CAST(COALESCE((SELECT count(*) FROM session_likes WHERE session_id = ${routeSessions.id}), 0) AS INTEGER)`,
-        commentsCount: sql<number>`CAST(COALESCE((SELECT count(*) FROM session_comments WHERE session_id = ${routeSessions.id}), 0) AS INTEGER)`,
-        hasLiked: sql<boolean>`CASE WHEN EXISTS(SELECT 1 FROM session_likes WHERE session_id = ${routeSessions.id} AND user_id = ${dbUser.id}) THEN true ELSE false END`,
-      })
-      .from(routeSessions)
-      .where(
-        and(
-          inArray(routeSessions.userId, targetUserIds),
-          or(
-            eq(routeSessions.isPublic, true),
-            eq(routeSessions.userId, dbUser.id)
-          )
-        )
-      )
-      .orderBy(desc(routeSessions.completedAt))
-      .limit(30);
+    // ── QUERY 100% DIRETA NO POSTGRES ──
+    const rawQuery = sql`
+      SELECT
+        rs.id AS "sessionId",
+        rs.user_id AS "userId",
+        rs.route_id AS "routeId",
+        rs.completed_at AS "completedAt",
+        rs.total_distance_km AS "distanceKm",
+        rs.activity_type AS "activityType",
+        rs.duration_seconds AS "durationSeconds",
+        rs.average_pace AS "averagePace",
+        rs.social_image_url AS "socialImageUrl",
+        rs.is_public AS "isPublic",
+        COALESCE((SELECT COUNT(*)::int FROM session_likes sl WHERE sl.session_id = rs.id), 0) AS "likesCount",
+        COALESCE((SELECT COUNT(*)::int FROM session_comments sc WHERE sc.session_id = rs.id), 0) AS "commentsCount",
+        EXISTS(SELECT 1 FROM session_likes sl2 WHERE sl2.session_id = rs.id AND sl2.user_id = ${dbUser.id}) AS "hasLiked",
+        u.display_name AS "userName",
+        u.username AS "userUsername",
+        u.avatar_url AS "userAvatarUrl",
+        r.name AS "routeName",
+        r.cover_image_url AS "coverImageUrl",
+        COALESCE(r.type, rs.activity_type, 'outros') AS "type",
+        o.name AS "organizationName",
+        COALESCE((SELECT COUNT(*)::int FROM waypoints w WHERE w.route_id = rs.route_id), 0) AS "waypointCount"
+      FROM route_sessions rs
+      JOIN users u ON u.id = rs.user_id
+      LEFT JOIN routes r ON r.id = rs.route_id
+      LEFT JOIN organizations o ON o.id = r.organization_id
+      WHERE (rs.user_id IN (${userIdsList}) OR rs.is_public = true OR rs.user_id = ${dbUser.id})
+      ORDER BY rs.completed_at DESC
+      LIMIT 30;
+    `;
 
-    if (sessions.length === 0) return NextResponse.json([]);
+  const rows = await db.execute(rawQuery);
 
-    const routeIds = [
-      ...new Set(sessions.map((s) => s.routeId).filter(Boolean)),
-    ] as string[];
-    const userIds = [...new Set(sessions.map((s) => s.userId))];
+    const feed = rows.map((row: any) => ({
+      id: row.sessionId,
+      userId: row.userId,
+      userName: row.userName || "Usuário",
+      userUsername: row.userUsername || "",
+      userAvatarUrl: row.userAvatarUrl || null,
+      routeName: row.routeName || null,
+      routeId: row.routeId,
+      coverImageUrl: row.coverImageUrl || null,
+      type: row.type,
+      organizationName: row.organizationName || null,
+      completedAt: row.completedAt
+        ? new Date(row.completedAt).toISOString()
+        : new Date().toISOString(),
+      waypointCount: Number(row.waypointCount) || 0,
+      distanceKm: row.distanceKm,
+      socialImageUrl: row.socialImageUrl,
+      averagePace: row.averagePace,
+      durationSeconds: row.durationSeconds,
+      activityType: row.activityType,
+      isPublic: row.isPublic,
+      likesCount: Number(row.likesCount) || 0,
+      commentsCount: Number(row.commentsCount) || 0,
+      hasLiked: Boolean(row.hasLiked),
+    }));
 
-    let routeList: any[] = [];
-    let waypointCounts: any[] = [];
-
-    if (routeIds.length > 0) {
-      routeList = await db
-        .select({
-          id: routes.id,
-          name: routes.name,
-          coverImageUrl: routes.coverImageUrl,
-          type: routes.type,
-          organizationName: organizations.name,
-        })
-        .from(routes)
-        .leftJoin(organizations, eq(routes.organizationId, organizations.id))
-        .where(inArray(routes.id, routeIds));
-
-      waypointCounts = await db
-        .select({ routeId: waypoints.routeId })
-        .from(waypoints)
-        .where(inArray(waypoints.routeId, routeIds));
-    }
-
-    const userList = await db
-      .select()
-      .from(users)
-      .where(inArray(users.id, userIds));
-
-    const routeMap = Object.fromEntries(routeList.map((r) => [r.id, r]));
-    const userMap = Object.fromEntries(userList.map((u) => [u.id, u]));
-
-    const wpCountMap: Record<string, number> = {};
-    waypointCounts.forEach((w) => {
-      wpCountMap[w.routeId] = (wpCountMap[w.routeId] ?? 0) + 1;
+    // Retorna com Headers brutais contra o cache do Next
+    return NextResponse.json(feed, {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        Pragma: "no-cache",
+        Expires: "0",
+      },
     });
-
-    const feed = sessions.map((s) => {
-      const r = s.routeId ? routeMap[s.routeId] : null;
-
-      return {
-        id: s.sessionId,
-        userId: s.userId,
-        userName: userMap[s.userId]?.displayName ?? "Usuário",
-        userUsername: userMap[s.userId]?.username ?? "",
-        userAvatarUrl: userMap[s.userId]?.avatarUrl ?? null,
-
-        routeName: r?.name ?? null,
-        routeId: s.routeId,
-        coverImageUrl: r?.coverImageUrl ?? null,
-        type: r?.type ?? s.activityType ?? "outros",
-        organizationName: r?.organizationName ?? null,
-        completedAt: s.completedAt?.toISOString() ?? new Date().toISOString(),
-        badgeName: null,
-        badgeImageUrl: null,
-        waypointCount: s.routeId ? wpCountMap[s.routeId] ?? 0 : 0,
-        distanceKm: s.totalDistanceKm,
-
-        socialImageUrl: s.socialImageUrl,
-        averagePace: s.averagePace,
-        durationSeconds: s.durationSeconds,
-        activityType: s.activityType,
-        isPublic: s.isPublic,
-
-        likesCount: Number(s.likesCount || 0),
-        commentsCount: Number(s.commentsCount || 0),
-        hasLiked: s.hasLiked === true || String(s.hasLiked) === "true",
-      };
-    });
-
-    return NextResponse.json(feed);
   } catch (err: any) {
     console.error("Erro no feed API:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });

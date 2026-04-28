@@ -5,15 +5,15 @@ import { sessionComments, users } from "@/lib/db/remote/schema";
 import { eq, asc } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
 export const revalidate = 0;
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ sessionId: string }> }
+  { params }: { params: Promise<{ sessionId: string }> }
 ) {
   try {
-    const resolvedParams = await context.params;
-    const sessionId = resolvedParams.sessionId;
+    const { sessionId } = await params;
 
     const comments = await db
       .select({
@@ -32,7 +32,14 @@ export async function GET(
       .where(eq(sessionComments.sessionId, sessionId))
       .orderBy(asc(sessionComments.createdAt));
 
-    return NextResponse.json(comments);
+    // Headers hardcoded
+    return NextResponse.json(comments, {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        Pragma: "no-cache",
+        Expires: "0",
+      },
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
@@ -40,11 +47,10 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  context: { params: Promise<{ sessionId: string }> }
+  { params }: { params: Promise<{ sessionId: string }> }
 ) {
   try {
-    const resolvedParams = await context.params;
-    const sessionId = resolvedParams.sessionId;
+    const { sessionId } = await params;
     const { content } = await request.json();
 
     const token = request.headers.get("Authorization")?.replace("Bearer ", "");
