@@ -27,7 +27,7 @@ type RouteDetail = {
   coverImageUrl: string | null;
   organizationName: string | null;
   waypoints: Waypoint[];
-  polyline?: string; // CAMPO ADICIONADO PARA ESTRADA REAL
+  polyline?: string | null; // Adicionado para suportar a estrada real
 };
 
 const difficultyLabel: Record<string, string> = {
@@ -43,7 +43,6 @@ const difficultyColor: Record<string, string> = {
   extreme: "#7c3aed",
 };
 
-// Função utilitária para decodificar a geometria vinda do banco
 function decodePolyline(str: string, precision = 5): [number, number][] {
   let index = 0;
   let lat = 0;
@@ -155,51 +154,10 @@ export default function RouteClient({
         attribution: "© Google Maps",
       }).addTo(map);
 
-      // --- DESENHO DA ROTA ---
-      if (currentRoute.polyline) {
-        // SE TIVER POLYLINE (ESTRADA REAL), DESENHA O TRAÇADO COMPLETO
-        const pathPoints = decodePolyline(currentRoute.polyline);
-        
-        // Sombra da linha
-        L.polyline(pathPoints, {
-          color: "#000",
-          weight: 7,
-          opacity: 0.15,
-          lineJoin: "round"
-        }).addTo(map);
-
-        // Linha principal
-        const mainLine = L.polyline(pathPoints, {
-          color: "#E05300",
-          weight: 5,
-          opacity: 0.9,
-          lineJoin: "round"
-        }).addTo(map);
-
-        map.fitBounds(mainLine.getBounds(), { padding: [30, 30] });
-      } else {
-        // FALLBACK: SE NÃO TIVER POLYLINE, USA OS WAYPOINTS (LINHA RETA)
-        const latlngs: [number, number][] = currentRoute.waypoints.map(wp => [
-          parseFloat(wp.latitude),
-          parseFloat(wp.longitude)
-        ]);
-
-        if (latlngs.length > 1) {
-          const straightLine = L.polyline(latlngs, {
-            color: "#E05300",
-            weight: 3,
-            opacity: 0.8,
-            dashArray: "8, 6",
-          }).addTo(map);
-          map.fitBounds(straightLine.getBounds(), { padding: [30, 30] });
-        }
-      }
-
-      // ADICIONA MARCADORES DOS WAYPOINTS
+      // ADICIONA OS MARCADORES DOS WAYPOINTS PRIMEIRO
       currentRoute.waypoints.forEach((wp, i) => {
         const lat = parseFloat(wp.latitude);
         const lng = parseFloat(wp.longitude);
-        
         const icon = L.divIcon({
           html: `<div style="background:linear-gradient(135deg,#830200,#E05300);color:white;width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:11px;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);"><span style="transform:rotate(45deg)">${
             i + 1
@@ -208,11 +166,90 @@ export default function RouteClient({
           iconSize: [28, 28],
           iconAnchor: [14, 28],
         });
-        
         L.marker([lat, lng], { icon })
           .addTo(map)
           .bindPopup(`<b>${wp.name || `Ponto ${i + 1}`}</b>`);
       });
+
+      let bounds: any = null;
+
+      // ── SOLUÇÃO 1: LÓGICA PARA DESENHAR ESTRADA REAL OU FALLBACK AO VIVO ──
+      if (currentRoute.polyline) {
+        // Se a rota for nova e já tiver a polyline no banco
+        const pathPoints = decodePolyline(currentRoute.polyline);
+
+        L.polyline(pathPoints, {
+          color: "#000",
+          weight: 7,
+          opacity: 0.15,
+          lineJoin: "round",
+        }).addTo(map);
+
+        const line = L.polyline(pathPoints, {
+          color: "#E05300",
+          weight: 5,
+          opacity: 0.9,
+          lineJoin: "round",
+        }).addTo(map);
+
+        bounds = line.getBounds();
+      } else if (currentRoute.waypoints && currentRoute.waypoints.length > 1) {
+        // Se for rota antiga (sem polyline), o app recalcula ao vivo!
+        try {
+          let profile = "foot";
+          if (currentRoute.type === "cicloturismo") profile = "bike";
+          else if (currentRoute.type === "4x4" || currentRoute.type === "moto") profile = "driving";
+
+          const coords = currentRoute.waypoints
+            .sort((a, b) => a.order - b.order)
+            .map((wp) => `${wp.longitude},${wp.latitude}`)
+            .join(";");
+
+          const res = await fetch(`https://router.project-osrm.org/route/v1/${profile}/${coords}?overview=full&geometries=polyline`);
+          const data = await res.json();
+
+          if (data.code === "Ok" && data.routes?.[0]) {
+            const livePathPoints = decodePolyline(data.routes[0].geometry);
+
+            L.polyline(livePathPoints, {
+              color: "#000",
+              weight: 7,
+              opacity: 0.15,
+              lineJoin: "round",
+            }).addTo(map);
+
+            const line = L.polyline(livePathPoints, {
+              color: "#E05300",
+              weight: 5,
+              opacity: 0.9,
+              lineJoin: "round",
+            }).addTo(map);
+
+            bounds = line.getBounds();
+          } else {
+            throw new Error("Falha no OSRM");
+          }
+        } catch (error) {
+          // Último recurso: se o app estiver offline ou OSRM falhar, liga os pontos em linha reta pontilhada
+          const latlngs: [number, number][] = currentRoute.waypoints.map((wp) => [
+            parseFloat(wp.latitude),
+            parseFloat(wp.longitude),
+          ]);
+          
+          const line = L.polyline(latlngs, {
+            color: "#E05300",
+            weight: 3,
+            opacity: 0.8,
+            dashArray: "8, 6",
+          }).addTo(map);
+          
+          bounds = line.getBounds();
+        }
+      }
+
+      if (bounds) {
+        map.fitBounds(bounds, { padding: [30, 30] });
+      }
 
       mapRef.current = map;
       setMapReady(true);
@@ -261,6 +298,7 @@ export default function RouteClient({
   return (
     <div className="min-h-screen bg-white font-[family-name:var(--font-dm)]">
       <div className="relative h-64">
+        {}
         <div ref={mapContainerRef} className="absolute inset-0" />
 
         {!mapReady && (
@@ -275,6 +313,7 @@ export default function RouteClient({
           </div>
         )}
 
+        {}
         <button
           onClick={() => router.back()}
           className="absolute top-4 left-4 z-[1000] w-10 h-10 rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-transform"
@@ -292,6 +331,7 @@ export default function RouteClient({
           </svg>
         </button>
 
+        {}
         <button
           onClick={() => setIsSatellite(!isSatellite)}
           className="absolute top-4 right-4 z-[1000] w-10 h-10 rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-transform"
@@ -460,7 +500,7 @@ export default function RouteClient({
               "linear-gradient(135deg, #830200 0%, #E05300 60%, #FF8C00 100%)",
           }}
         >
-          🚀 Iniciar trilha
+          Iniciar trilha
         </Link>
       </div>
     </div>
