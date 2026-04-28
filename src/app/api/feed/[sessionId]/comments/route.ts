@@ -4,6 +4,9 @@ import { db } from "@/lib/db/remote/client";
 import { sessionComments, users } from "@/lib/db/remote/schema";
 import { eq, asc } from "drizzle-orm";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ sessionId: string }> }

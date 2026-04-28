@@ -11,6 +11,9 @@ import {
 } from "@/lib/db/remote/schema";
 import { eq, inArray, desc, and, or, sql } from "drizzle-orm";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET(request: NextRequest) {
   try {
     const token = request.headers.get("Authorization")?.replace("Bearer ", "");
@@ -28,7 +31,6 @@ export async function GET(request: NextRequest) {
       .limit(1);
     if (!dbUser) return NextResponse.json([]);
 
-    // ── NOVO: Verifica se a URL pede o feed de um usuário específico (Perfil) ──
     const url = new URL(request.url);
     const profileUserId = url.searchParams.get("userId");
 
@@ -60,8 +62,8 @@ export async function GET(request: NextRequest) {
         socialImageUrl: routeSessions.socialImageUrl,
         isPublic: routeSessions.isPublic,
 
-        likesCount: sql<number>`CAST((SELECT count(*) FROM session_likes WHERE session_id = ${routeSessions.id}) AS INTEGER)`,
-        commentsCount: sql<number>`CAST((SELECT count(*) FROM session_comments WHERE session_id = ${routeSessions.id}) AS INTEGER)`,
+        likesCount: sql<number>`CAST(COALESCE((SELECT count(*) FROM session_likes WHERE session_id = ${routeSessions.id}), 0) AS INTEGER)`,
+        commentsCount: sql<number>`CAST(COALESCE((SELECT count(*) FROM session_comments WHERE session_id = ${routeSessions.id}), 0) AS INTEGER)`,
         hasLiked: sql<boolean>`CASE WHEN EXISTS(SELECT 1 FROM session_likes WHERE session_id = ${routeSessions.id} AND user_id = ${dbUser.id}) THEN true ELSE false END`,
       })
       .from(routeSessions)
@@ -129,7 +131,6 @@ export async function GET(request: NextRequest) {
         userUsername: userMap[s.userId]?.username ?? "",
         userAvatarUrl: userMap[s.userId]?.avatarUrl ?? null,
 
-        // Se for trilha, usa os dados da trilha. Se for treino livre, usa os dados da sessão
         routeName: r?.name ?? null,
         routeId: s.routeId,
         coverImageUrl: r?.coverImageUrl ?? null,

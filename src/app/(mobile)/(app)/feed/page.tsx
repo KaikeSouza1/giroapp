@@ -87,6 +87,7 @@ export default function FeedPage() {
       try {
         const res = await fetch("/api/feed", {
           headers: { Authorization: `Bearer ${session.access_token}` },
+          cache: "no-store", // Força não usar cache
         });
 
         if (!res.ok) throw new Error(`Erro API: ${res.status}`);
@@ -134,6 +135,7 @@ export default function FeedPage() {
           `/api/users/search?q=${encodeURIComponent(searchQuery)}`,
           {
             headers: { Authorization: `Bearer ${session.access_token}` },
+            cache: "no-store",
           }
         );
         const data = await res.json();
@@ -192,6 +194,7 @@ export default function FeedPage() {
           Authorization: `Bearer ${session.access_token}`,
           "Content-Type": "application/json",
         },
+        cache: "no-store",
       });
 
       if (!res.ok) {
@@ -209,7 +212,6 @@ export default function FeedPage() {
             ? {
                 ...item,
                 hasLiked: result.liked,
-
                 likesCount:
                   result.likesCount != null
                     ? Number(result.likesCount)
@@ -251,6 +253,7 @@ export default function FeedPage() {
         headers: session
           ? { Authorization: `Bearer ${session.access_token}` }
           : {},
+        cache: "no-store", // Força não usar cache
       });
       if (!res.ok) throw new Error("Erro ao buscar comentários");
       const data = await res.json();
@@ -286,6 +289,7 @@ export default function FeedPage() {
           Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({ content: newCommentText }),
+        cache: "no-store",
       });
 
       if (!res.ok) {
@@ -299,7 +303,6 @@ export default function FeedPage() {
       setComments((prev) => [...prev, newComment]);
       setNewCommentText("");
 
-      // FIX: Usa adição segura com Number() para evitar NaN ou concatenação de string
       setFeed((prev) =>
         prev.map((item) =>
           item.id === activeCommentSession
@@ -409,7 +412,6 @@ export default function FeedPage() {
         </div>
       )}
 
-      {}
       <div
         className="relative overflow-hidden px-6 pt-12 pb-8"
         style={{
@@ -490,7 +492,6 @@ export default function FeedPage() {
         </div>
       </div>
 
-      {}
       {searchQuery.trim().length >= 2 && (
         <div className="absolute left-6 right-6 z-[60] mt-[-10px] bg-white rounded-[24px] shadow-2xl border border-gray-100 overflow-hidden max-h-80 overflow-y-auto animate-in fade-in slide-in-from-top-4 duration-300">
           {searchResults.length > 0 ? (
