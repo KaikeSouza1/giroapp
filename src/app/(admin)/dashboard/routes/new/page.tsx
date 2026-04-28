@@ -86,6 +86,7 @@ export default function NewRoutePage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
+  const [routePolyline, setRoutePolyline] = useState<string>(""); // Novo estado para o banco
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [mapReady, setMapReady] = useState(false);
@@ -203,7 +204,6 @@ export default function NewRoutePage() {
     updateMarkers();
   }, [waypoints, mapReady]);
 
-  // ── CORREÇÃO: Função de Roteamento OSRM Corrigida ──────────────────────
   const fetchOSRMRoute = useCallback(async (wps: Waypoint[], type: string) => {
     if (wps.length < 2 || !mapRef.current) return;
 
@@ -238,6 +238,10 @@ export default function NewRoutePage() {
 
       const route = data.routes[0];
       const geometry = route.geometry;
+      
+      // SALVA A GEOMETRIA REAL PARA O BANCO
+      setRoutePolyline(geometry);
+
       const latlngs = decodePolyline(geometry);
 
       const distKm = (route.distance / 1000).toFixed(2);
@@ -253,7 +257,6 @@ export default function NewRoutePage() {
         color: "#E05300",
         weight: 5,
         opacity: 0.85,
-        dashArray: undefined,
         lineJoin: "round",
         lineCap: "round",
       });
@@ -305,6 +308,10 @@ export default function NewRoutePage() {
       const latlngs = wps.map(
         (wp) => [wp.latitude, wp.longitude] as [number, number]
       );
+      
+      // Em modo linha reta, limpamos a polyline do banco para indicar traçado direto
+      setRoutePolyline("");
+
       const line = L.polyline(latlngs, {
         color: "#E05300",
         weight: 4,
@@ -494,6 +501,7 @@ export default function NewRoutePage() {
         ...form,
         coverImageUrl: finalImageUrl,
         waypoints,
+        polyline: routePolyline, // AGORA SALVA NO BANCO
       }),
     });
 
@@ -516,7 +524,6 @@ export default function NewRoutePage() {
     <div className="flex min-h-screen bg-gray-50">
       <Sidebar />
       <main className="flex-1 flex flex-col">
-        {}
         <div className="flex items-center justify-between px-8 py-5 bg-white border-b border-gray-100 shadow-sm z-10 relative">
           <div>
             <h1 className="text-xl font-black text-gray-900">Nova Rota</h1>
@@ -552,9 +559,7 @@ export default function NewRoutePage() {
         </div>
 
         <div className="flex flex-1 overflow-hidden relative">
-          {}
           <div className="w-[420px] bg-white border-r border-gray-100 flex flex-col overflow-hidden shadow-2xl z-20">
-            {}
             <div className="flex border-b border-gray-100">
               {(["info", "waypoints"] as const).map((tab) => (
                 <button
@@ -577,7 +582,6 @@ export default function NewRoutePage() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-5">
-              {}
               {activeTab === "info" && (
                 <div className="flex flex-col gap-4">
                   {error && (
@@ -644,7 +648,6 @@ export default function NewRoutePage() {
                     />
                   </div>
 
-                  {}
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
                       Imagem de Capa
@@ -919,7 +922,7 @@ export default function NewRoutePage() {
                 </div>
               )}
 
-              {}
+              {/* ABA DE WAYPOINTS COMPLETA */}
               {activeTab === "waypoints" && (
                 <div className="flex flex-col gap-4">
                   <div className="bg-orange-50/50 p-3 rounded-2xl border border-orange-100">
@@ -1051,6 +1054,7 @@ export default function NewRoutePage() {
           </div>
 
           <div className="flex-1 relative z-0">
+            {/* BUSCA FLUTUANTE NO MAPA */}
             <div className="absolute top-4 left-6 right-6 z-[400] pointer-events-none flex justify-center">
               <form
                 onSubmit={handleSearchMap}

@@ -27,6 +27,7 @@ type RouteDetail = {
   coverImageUrl: string | null;
   organizationName: string | null;
   waypoints: Waypoint[];
+  polyline?: string; // CAMPO ADICIONADO PARA ESTRADA REAL
 };
 
 const difficultyLabel: Record<string, string> = {
@@ -41,6 +42,41 @@ const difficultyColor: Record<string, string> = {
   hard: "#ef4444",
   extreme: "#7c3aed",
 };
+
+// Função utilitária para decodificar a geometria vinda do banco
+function decodePolyline(str: string, precision = 5): [number, number][] {
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+  const coordinates: [number, number][] = [];
+  const factor = Math.pow(10, precision);
+
+  while (index < str.length) {
+    let shift = 0;
+    let result = 0;
+    let byte: number;
+    do {
+      byte = str.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+    const deltaLat = result & 1 ? ~(result >> 1) : result >> 1;
+    lat += deltaLat;
+
+    shift = 0;
+    result = 0;
+    do {
+      byte = str.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+    const deltaLng = result & 1 ? ~(result >> 1) : result >> 1;
+    lng += deltaLng;
+
+    coordinates.push([lat / factor, lng / factor]);
+  }
+  return coordinates;
+}
 
 export default function RouteClient({
   params,
@@ -119,11 +155,51 @@ export default function RouteClient({
         attribution: "© Google Maps",
       }).addTo(map);
 
-      const latlngs: [number, number][] = [];
+      // --- DESENHO DA ROTA ---
+      if (currentRoute.polyline) {
+        // SE TIVER POLYLINE (ESTRADA REAL), DESENHA O TRAÇADO COMPLETO
+        const pathPoints = decodePolyline(currentRoute.polyline);
+        
+        // Sombra da linha
+        L.polyline(pathPoints, {
+          color: "#000",
+          weight: 7,
+          opacity: 0.15,
+          lineJoin: "round"
+        }).addTo(map);
+
+        // Linha principal
+        const mainLine = L.polyline(pathPoints, {
+          color: "#E05300",
+          weight: 5,
+          opacity: 0.9,
+          lineJoin: "round"
+        }).addTo(map);
+
+        map.fitBounds(mainLine.getBounds(), { padding: [30, 30] });
+      } else {
+        // FALLBACK: SE NÃO TIVER POLYLINE, USA OS WAYPOINTS (LINHA RETA)
+        const latlngs: [number, number][] = currentRoute.waypoints.map(wp => [
+          parseFloat(wp.latitude),
+          parseFloat(wp.longitude)
+        ]);
+
+        if (latlngs.length > 1) {
+          const straightLine = L.polyline(latlngs, {
+            color: "#E05300",
+            weight: 3,
+            opacity: 0.8,
+            dashArray: "8, 6",
+          }).addTo(map);
+          map.fitBounds(straightLine.getBounds(), { padding: [30, 30] });
+        }
+      }
+
+      // ADICIONA MARCADORES DOS WAYPOINTS
       currentRoute.waypoints.forEach((wp, i) => {
         const lat = parseFloat(wp.latitude);
         const lng = parseFloat(wp.longitude);
-        latlngs.push([lat, lng]);
+        
         const icon = L.divIcon({
           html: `<div style="background:linear-gradient(135deg,#830200,#E05300);color:white;width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:11px;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);"><span style="transform:rotate(45deg)">${
             i + 1
@@ -132,19 +208,12 @@ export default function RouteClient({
           iconSize: [28, 28],
           iconAnchor: [14, 28],
         });
+        
         L.marker([lat, lng], { icon })
           .addTo(map)
           .bindPopup(`<b>${wp.name || `Ponto ${i + 1}`}</b>`);
       });
-      if (latlngs.length > 1) {
-        L.polyline(latlngs, {
-          color: "#E05300",
-          weight: 3,
-          opacity: 0.8,
-          dashArray: "8, 6",
-        }).addTo(map);
-        map.fitBounds(L.latLngBounds(latlngs), { padding: [30, 30] });
-      }
+
       mapRef.current = map;
       setMapReady(true);
     }
@@ -192,7 +261,6 @@ export default function RouteClient({
   return (
     <div className="min-h-screen bg-white font-[family-name:var(--font-dm)]">
       <div className="relative h-64">
-        {}
         <div ref={mapContainerRef} className="absolute inset-0" />
 
         {!mapReady && (
@@ -207,7 +275,6 @@ export default function RouteClient({
           </div>
         )}
 
-        {}
         <button
           onClick={() => router.back()}
           className="absolute top-4 left-4 z-[1000] w-10 h-10 rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-transform"
@@ -225,7 +292,6 @@ export default function RouteClient({
           </svg>
         </button>
 
-        {}
         <button
           onClick={() => setIsSatellite(!isSatellite)}
           className="absolute top-4 right-4 z-[1000] w-10 h-10 rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-transform"
