@@ -134,7 +134,14 @@ npx cap open android   # ou: npx cap open ios
 ## 📱 Telas do app
 
 <p align="center">
-  <img src="./foto6giro.jpg" width="60%" />
+  <img src="./foto1giro.jpg" width="30%" />
+  <img src="./foto2giro.jpg" width="30%" />
+  <img src="./foto3giro.jpg" width="30%" />
+</p>
+<p align="center">
+  <img src="./foto4giro.jpg" width="30%" />
+  <img src="./foto5giro.jpg" width="30%" />
+  <img src="./foto6giro.jpg" width="30%" />
 </p>
 
 ---
